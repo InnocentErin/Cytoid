@@ -6,6 +6,7 @@ EXPORT_ROOT="$ROOT_DIR/.cytoid_game_core/exports/android/unityLibrary"
 EXAMPLE_ANDROID="$ROOT_DIR/example/android"
 ARTIFACT_DIR="$ROOT_DIR/.cytoid_game_core/artifacts/unity/android"
 AAR_OUT="$EXPORT_ROOT/unityLibrary/build/outputs/aar/unityLibrary-release.aar"
+GRADLE_VERSION="${CYTOID_GRADLE_VERSION:-8.13}"
 
 resolve_flutter_gradle_wrapper() {
   local flutter_bin flutter_root local_properties wrapper_root
@@ -93,6 +94,22 @@ configure_java_home() {
   return 0
 }
 
+download_gradle_distribution() {
+  local gradle_root gradle_zip gradle_cmd
+
+  gradle_root="$ROOT_DIR/.cytoid_game_core/build/gradle-bin"
+  gradle_zip="$ROOT_DIR/.cytoid_game_core/build/gradle-${GRADLE_VERSION}-bin.zip"
+  gradle_cmd="$gradle_root/gradle-${GRADLE_VERSION}/bin/gradle"
+
+  if [[ ! -x "$gradle_cmd" ]]; then
+    mkdir -p "$gradle_root" "$(dirname "$gradle_zip")"
+    curl -fL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o "$gradle_zip"
+    unzip -q "$gradle_zip" -d "$gradle_root"
+  fi
+
+  echo "$gradle_cmd"
+}
+
 if [[ ! -d "$EXPORT_ROOT/unityLibrary" ]]; then
   echo "Unity export missing at $EXPORT_ROOT" >&2
   echo "Run: Unity -batchmode -quit -projectPath <repo> -executeMethod CytoidCoreBuild.ExportAndroidLibraryForFlutter" >&2
@@ -119,25 +136,30 @@ path.write_text(text, encoding="utf-8")
 PY
 fi
 
-if [[ ! -x "$EXPORT_ROOT/gradlew" ]]; then
-  WRAPPER_ROOT="$(resolve_flutter_gradle_wrapper)" || {
-    echo "Gradle wrapper missing." >&2
-    echo "Install or initialize Flutter so bin/cache/artifacts/gradle_wrapper exists, then rerun this script." >&2
-    exit 1
-  }
+GRADLE_CMD=()
 
-  cp "$WRAPPER_ROOT/gradlew" "$EXPORT_ROOT/"
-  cp "$WRAPPER_ROOT/gradlew.bat" "$EXPORT_ROOT/" 2>/dev/null || true
-  mkdir -p "$EXPORT_ROOT/gradle/wrapper"
-  cp "$WRAPPER_ROOT/gradle/wrapper/gradle-wrapper.jar" "$EXPORT_ROOT/gradle/wrapper/"
-  cat >"$EXPORT_ROOT/gradle/wrapper/gradle-wrapper.properties" <<'EOF'
+if [[ -x "$EXPORT_ROOT/gradlew" ]]; then
+  GRADLE_CMD=("./gradlew")
+else
+  if WRAPPER_ROOT="$(resolve_flutter_gradle_wrapper)"; then
+    cp "$WRAPPER_ROOT/gradlew" "$EXPORT_ROOT/"
+    cp "$WRAPPER_ROOT/gradlew.bat" "$EXPORT_ROOT/" 2>/dev/null || true
+    mkdir -p "$EXPORT_ROOT/gradle/wrapper"
+    cp "$WRAPPER_ROOT/gradle/wrapper/gradle-wrapper.jar" "$EXPORT_ROOT/gradle/wrapper/"
+    cat >"$EXPORT_ROOT/gradle/wrapper/gradle-wrapper.properties" <<'EOF'
 distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
 EOF
-  chmod +x "$EXPORT_ROOT/gradlew"
+    chmod +x "$EXPORT_ROOT/gradlew"
+    GRADLE_CMD=("./gradlew")
+  elif command -v gradle >/dev/null 2>&1; then
+    GRADLE_CMD=("gradle")
+  else
+    GRADLE_CMD=("$(download_gradle_distribution)")
+  fi
 fi
 
 configure_java_home
@@ -145,7 +167,7 @@ configure_java_home
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT_DIR/.cytoid_game_core/build/gradle}"
 mkdir -p "$GRADLE_USER_HOME"
 
-(cd "$EXPORT_ROOT" && ./gradlew :unityLibrary:assembleRelease --no-daemon)
+(cd "$EXPORT_ROOT" && "${GRADLE_CMD[@]}" :unityLibrary:assembleRelease --no-daemon)
 
 mkdir -p "$ARTIFACT_DIR"
 cp "$AAR_OUT" "$ARTIFACT_DIR/cytoid-unity-core.aar"

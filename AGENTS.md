@@ -54,8 +54,9 @@ cytoid-core-unity/
 │   ├── lib/                    # Dart: CytoidGameCoreClient, envelopes, payloads
 │   ├── android/                # org.cytoid.gamecore — loads *.aar artifacts
 │   ├── example/                # Minimal Bridge-embedded demo
-│   ├── tool/                   # build_unity_aar.sh, setup_unity_artifacts.sh
+│   ├── tool/                   # build/package artifact scripts + vendor install helper
 │   └── .cytoid_game_core/      # gitignored exports + artifacts (local)
+├── .github/workflows/          # GameCI + Flutter plugin artifact packaging
 ├── Packages/                   # UPM manifest (UniTask, unity-mcp, …)
 ├── ProjectSettings/
 └── README.md                   # Human-oriented; may lag AGENTS.md on paths
@@ -120,6 +121,18 @@ Without artifacts, the plugin uses a **mock engine** (host protocol still works)
 
 Optional download: `CYTOID_GAME_CORE_ARTIFACT_BASE_URL` + `./tool/setup_unity_artifacts.sh`.
 
+Release automation: `.github/workflows/release.yml` uses `danielroe/uppt`
+(`pr` + `release` subactions only) to open `release/vX.Y.Z` PRs from
+conventional commits, tag merged release PRs as `vX.Y.Z`, create a GitHub
+Release, and dispatch `.github/workflows/flutter-plugin-artifacts.yml`.
+We do not use `uppt/publish`, because it publishes npm packages.
+
+CI: `.github/workflows/flutter-plugin-artifacts.yml` uses GameCI `unity-builder@v4`
+for Android AAR export/package and iOS UnityLibrary export. iOS
+`UnityFramework.xcframework` packaging runs afterward on macOS/Xcode from the
+exported Xcode project. Release tags matching `v*` create GitHub Release assets
+instead of publishing to dart.dev.
+
 ### cytoid_flutter (full app)
 
 Documented in sibling repo: `cytoid_flutter/docs/unity-android-export.md`, `scripts/export_unity_android.sh`.
@@ -140,6 +153,9 @@ flutter run
   `flutter_plugin/tool/build_unity_ios_framework.sh` (requires macOS + Xcode) to write
   `flutter_plugin/.cytoid_game_core/artifacts/unity/ios/UnityFramework.framework` and
   `UnityFramework.xcframework`; Swift Package Manager uses the `.xcframework`.
+- CI can call `CytoidCoreBuild.ExportIOSLibraryForFlutterWithoutPackaging` to
+  export the UnityLibrary Xcode project on GameCI/Linux and package it later on
+  macOS.
 - Re-package only: `cd flutter_plugin && ./tool/build_unity_ios_framework.sh`
 - The current Unity iOS export is device-only. Simulator builds need a simulator
   slice in `UnityFramework.xcframework`, or no mounted Unity artifact so the
@@ -155,6 +171,15 @@ flutter run
 |--------|---------|
 | `CytoidCoreBuild.ExportAndroidLibraryForFlutter` | Export Gradle library + AAR artifacts |
 | `CytoidCoreBuild.ExportIOSLibraryForFlutter` | Export Xcode project + UnityFramework.xcframework |
+| `CytoidCoreBuild.ExportIOSLibraryForFlutterWithoutPackaging` | Export iOS Xcode project only; CI packages on macOS |
+
+### Release automation
+
+`package.json` at the repository root is a release manifest for `uppt`; it is
+not an npm package we publish. `uppt` bumps that version in the release PR and
+creates `vX.Y.Z` tags. The artifact workflow syncs the Flutter plugin
+`pubspec.yaml` version from the tag at packaging time via
+`flutter_plugin/tool/sync_pubspec_version_from_tag.sh`.
 
 ---
 
@@ -168,7 +193,7 @@ flutter run
 
 ### Licensing & assets
 
-- Optional paid packages under **`Assets/Vendor/<Package>/`** (gitignored), installed via maintainer zip (`tools/vendor/pack.sh`). Example: `Assets/Vendor/StoryboardFilters/`. Open-source clones use fallbacks in `Assets/Shaders/Storyboard/`. See `docs/vendor.md`.
+- Optional paid packages under **`Assets/Vendor/<Package>/`** (gitignored), installed via maintainer zip (`flutter_plugin/tool/install_vendor_from_archive.sh`). Example: `Assets/Vendor/StoryboardFilters/`. Open-source clones use fallbacks in `Assets/Shaders/Storyboard/`. See `docs/vendor.md`.
 - Some other commercial plugins and art are **not** in git (see upstream `Cytoid-private`). Do not commit licensed third-party assets or secrets.
 - `Builds/`, `Library/`, `flutter_plugin/.cytoid_game_core/exports/`, and artifact binaries are **local-only** (gitignored).
 
@@ -214,6 +239,9 @@ Append new rows when architecture or default paths change.
 |-------|----------|
 | External dependencies inventory | `DEPENDENCIES.md` |
 | Build menu / batchmode | `Assets/Scripts/Editor/CytoidCoreBuild.cs` |
+| Release PR / tag automation | `.github/workflows/release.yml`, `package.json` |
+| CI plugin artifacts | `.github/workflows/flutter-plugin-artifacts.yml` |
+| Vendor asset install | `flutter_plugin/tool/install_vendor_from_archive.sh`, `docs/vendor.md` |
 | Game bridge | `Assets/Scripts/Host/GameBridge.cs` |
 | Wire envelope (C#) | `Assets/Scripts/Host/CytoidGameCoreEnvelope.cs` |
 | Game log forwarding | `Assets/Scripts/Host/GameLogBridge.cs` |

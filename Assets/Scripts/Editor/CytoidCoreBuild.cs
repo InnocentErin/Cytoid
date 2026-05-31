@@ -67,7 +67,17 @@ public static class CytoidCoreBuild
     /// </summary>
     public static void ExportIOSLibraryForFlutter()
     {
-        ExportIOSLibraryForFlutter(ResolveFlutterUnityIOSOutputPath());
+        ExportIOSLibraryForFlutter(ResolveFlutterUnityIOSOutputPath(), true);
+    }
+
+    /// <summary>
+    /// Batchmode: exports the iOS UnityLibrary Xcode project without invoking xcodebuild.
+    /// Used by CI when the Unity export runs in GameCI/Linux and framework packaging
+    /// happens later on a macOS runner.
+    /// </summary>
+    public static void ExportIOSLibraryForFlutterWithoutPackaging()
+    {
+        ExportIOSLibraryForFlutter(ResolveFlutterUnityIOSOutputPath(), false);
     }
 
     [MenuItem("Cytoid/Build Android Plugin Artifacts", false, MenuPriorityBuildAndroid)]
@@ -108,7 +118,7 @@ public static class CytoidCoreBuild
             "Android plugin export");
     }
 
-    private static void ExportIOSLibraryForFlutter(string outputDirectory)
+    private static void ExportIOSLibraryForFlutter(string outputDirectory, bool packageFramework)
     {
         SwitchToIOS();
         Directory.CreateDirectory(outputDirectory);
@@ -131,7 +141,16 @@ public static class CytoidCoreBuild
                             + $"  Library bundle id: {FlutterHostLibraryApplicationIdentifier}\n"
                             + $"  Flutter plugin package: {FlutterHostApplicationId}\n"
                             + "  Native callback: CytoidHostNative_SetMessageHandler from Flutter host");
-                        PackageIOSLibraryForFlutter();
+                        if (packageFramework)
+                        {
+                            PackageIOSLibraryForFlutter();
+                        }
+                        else
+                        {
+                            Debug.Log(
+                                "[CytoidCoreBuild] Skipped iOS UnityFramework packaging. "
+                                + "Run flutter_plugin/tool/build_unity_ios_framework.sh on macOS.");
+                        }
                     });
             },
             "iOS plugin export");

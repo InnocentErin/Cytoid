@@ -14,9 +14,9 @@ if [[ -z "$BASE_URL" ]]; then
 CYTOID_GAME_CORE_ARTIFACT_BASE_URL is not set.
 
 Expected files:
-  \$CYTOID_GAME_CORE_ARTIFACT_BASE_URL/$VERSION/android/cytoid-unity-core.aar
-  \$CYTOID_GAME_CORE_ARTIFACT_BASE_URL/$VERSION/android/*.aar
-  \$CYTOID_GAME_CORE_ARTIFACT_BASE_URL/$VERSION/ios/UnityFramework.xcframework.zip
+  \$CYTOID_GAME_CORE_ARTIFACT_BASE_URL/$VERSION/cytoid-unity-core.aar
+  \$CYTOID_GAME_CORE_ARTIFACT_BASE_URL/$VERSION/*.aar
+  \$CYTOID_GAME_CORE_ARTIFACT_BASE_URL/$VERSION/UnityFramework.xcframework.zip
 
 Example:
   export CYTOID_GAME_CORE_ARTIFACT_BASE_URL=https://github.com/cytoid/cytoid-core-unity/releases/download
@@ -31,6 +31,25 @@ download() {
   mkdir -p "$(dirname "$output")"
   echo "Downloading $url"
   curl -fL "$url" -o "$output"
+}
+
+download_first_available() {
+  local output="$1"
+  shift
+
+  local url
+  for url in "$@"; do
+    if curl -fIL "$url" >/dev/null 2>&1; then
+      download "$url" "$output"
+      return 0
+    fi
+  done
+
+  echo "None of these artifact URLs were available:" >&2
+  for url in "$@"; do
+    echo "  $url" >&2
+  done
+  exit 4
 }
 
 verify_checksum() {
@@ -50,15 +69,23 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$ARTIFACT_ROOT/android" "$ARTIFACT_ROOT/ios"
 
-download "$BASE_URL/$VERSION/android/cytoid-unity-core.aar" "$ARTIFACT_ROOT/android/cytoid-unity-core.aar"
+download_first_available \
+  "$ARTIFACT_ROOT/android/cytoid-unity-core.aar" \
+  "$BASE_URL/$VERSION/cytoid-unity-core.aar" \
+  "$BASE_URL/$VERSION/android/cytoid-unity-core.aar"
 
 for aar in NativeAudio.aar IngameDebugConsole.aar lunar-console.aar CytoidPlugin.aar; do
-  if curl -fIL "$BASE_URL/$VERSION/android/$aar" >/dev/null 2>&1; then
+  if curl -fIL "$BASE_URL/$VERSION/$aar" >/dev/null 2>&1; then
+    download "$BASE_URL/$VERSION/$aar" "$ARTIFACT_ROOT/android/$aar"
+  elif curl -fIL "$BASE_URL/$VERSION/android/$aar" >/dev/null 2>&1; then
     download "$BASE_URL/$VERSION/android/$aar" "$ARTIFACT_ROOT/android/$aar"
   fi
 done
 
-download "$BASE_URL/$VERSION/ios/UnityFramework.xcframework.zip" "$TMP_DIR/UnityFramework.xcframework.zip"
+download_first_available \
+  "$TMP_DIR/UnityFramework.xcframework.zip" \
+  "$BASE_URL/$VERSION/UnityFramework.xcframework.zip" \
+  "$BASE_URL/$VERSION/ios/UnityFramework.xcframework.zip"
 rm -rf "$ARTIFACT_ROOT/ios/UnityFramework.xcframework"
 unzip -q "$TMP_DIR/UnityFramework.xcframework.zip" -d "$ARTIFACT_ROOT/ios"
 

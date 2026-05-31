@@ -1,3 +1,4 @@
+using System;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -59,15 +60,33 @@ public class AudioClipLoader
     public void Unload()
     {
         if (!loaded) return;
-        AudioClip?.UnloadAudioData();
-        Object.Destroy(AudioClip);
+        if (AudioClip != null)
+        {
+            try
+            {
+                AudioClip.UnloadAudioData();
+            }
+            catch (MissingReferenceException)
+            {
+            }
+            catch (NullReferenceException)
+            {
+            }
+
+            UnityEngine.Object.Destroy(AudioClip);
+        }
         AudioClip = null;
+        DisposeDecoder();
+
+        loaded = false;
+    }
+
+    public void DisposeDecoder()
+    {
         if (nLayerLoader != null)
         {
             nLayerLoader.Dispose();
             nLayerLoader = null;
         }
-
-        loaded = false;
     }
 }

@@ -5,10 +5,16 @@ using UnityEngine;
 
 public class Splash : MonoBehaviour
 {
-    [GetComponent] public CanvasGroup canvasGroup;
+    public CanvasGroup canvasGroup;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref canvasGroup);
+    }
 
     private void Awake()
     {
+        this.AutoFill(ref canvasGroup);
         canvasGroup.alpha = 0;
     }
 

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Lean.Touch;
 using UnityEngine;
 
 public class InputController : MonoBehaviour
@@ -22,16 +21,16 @@ public class InputController : MonoBehaviour
 
     public void EnableInput()
     {
-        LeanTouch.OnFingerDown += OnFingerDown;
-        LeanTouch.OnFingerUpdate += OnFingerUpdate;
-        LeanTouch.OnFingerUp += OnFingerUp;
+        GameTouchInput.FingerDown += OnFingerDown;
+        GameTouchInput.FingerUpdate += OnFingerUpdate;
+        GameTouchInput.FingerUp += OnFingerUp;
     }
 
     public void DisableInput()
     {
-        LeanTouch.OnFingerDown -= OnFingerDown;
-        LeanTouch.OnFingerUpdate -= OnFingerUpdate;
-        LeanTouch.OnFingerUp -= OnFingerUp;
+        GameTouchInput.FingerDown -= OnFingerDown;
+        GameTouchInput.FingerUpdate -= OnFingerUpdate;
+        GameTouchInput.FingerUp -= OnFingerUp;
     }
 
     public void OnNoteCollected(Note note)
@@ -92,7 +91,7 @@ public class InputController : MonoBehaviour
         // });
     }
 
-    protected virtual void OnFingerDown(LeanFinger finger)
+    protected virtual void OnFingerDown(GameFinger finger)
     {
         var pressedPosition = game.camera.orthographic
             ? game.camera.ScreenToWorldPoint(finger.ScreenPosition)
@@ -129,7 +128,7 @@ public class InputController : MonoBehaviour
         }
     }
 
-    protected virtual void OnFingerUpdate(LeanFinger finger)
+    protected virtual void OnFingerUpdate(GameFinger finger)
     {
         var pos = game.camera.orthographic
             ? game.camera.ScreenToWorldPoint(finger.ScreenPosition)
@@ -200,7 +199,7 @@ public class InputController : MonoBehaviour
         }
     }
 
-    protected virtual void OnFingerUp(LeanFinger finger)
+    protected virtual void OnFingerUp(GameFinger finger)
     {
         if (HoldingNotes.ContainsKey(finger.Index))
         {

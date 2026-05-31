@@ -8,17 +8,13 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Fisheye != null)
-                {
-                    Provider.Fisheye.enabled = From.Fisheye.Value;
-                    if (From.Fisheye.Value && From.FisheyeIntensity != null)
-                    {
-                        Provider.Fisheye.Distortion = EaseFloat(From.FisheyeIntensity, To.FisheyeIntensity);
-                    }
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.Fisheye == null) return;
+
+            var effect = Provider.Effects.Fisheye;
+            effect.Enabled = From.Fisheye.Value;
+            if (From.Fisheye.Value && From.FisheyeIntensity != null)
+                effect.Distortion = EaseFloat(From.FisheyeIntensity, To.FisheyeIntensity);
         }
     }
 }

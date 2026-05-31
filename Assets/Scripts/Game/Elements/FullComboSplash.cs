@@ -1,6 +1,6 @@
 using UnityEngine.UI;
 
-public class FullComboSplash : AwaitableAnimatedElement
+public class FullComboSplash : CleanTitleTransitionElement
 {
     public Game game;
     public Text text;

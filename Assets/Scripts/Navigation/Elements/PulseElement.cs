@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using DG.Tweening;
 using Cysharp.Threading.Tasks;
-using UnityEditor;
+using DG.Tweening;
 using UnityEngine;
-using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class PulseElement : MonoBehaviour
 {
@@ -17,7 +18,7 @@ public class PulseElement : MonoBehaviour
     public float finalSizeY = -1;
     public float duration = 3f;
     public bool overlay = false;
-    
+
     public Ease ease = Ease.OutCubic;
     public List<MonoBehaviour> componentsToDestroyAfterClone = new List<MonoBehaviour>();
 
@@ -27,29 +28,26 @@ public class PulseElement : MonoBehaviour
     };
 
     private bool isCloned;
-    
+
     private GameObject holder;
     private RectTransform holderRectTransform;
     private RectTransform rectTransform;
 
     protected void Awake()
     {
-        // Return if this is a cloned instance
         if (cloning)
         {
             isCloned = true;
             return;
         }
 
-        // Create holder
         holder = new GameObject(gameObject.name + "_PulseWrapper");
         holder.transform.parent = transform.parent;
         holder.transform.SetZ(transform.position.z);
-        
-        holderRectTransform = holder.AddComponent<RectTransform>(); 
+
+        holderRectTransform = holder.AddComponent<RectTransform>();
         rectTransform = GetComponent<RectTransform>();
 
-        // Transfer rect transform properties
         holderRectTransform.pivot = rectTransform.pivot;
         holderRectTransform.SetSiblingIndex(transform.GetSiblingIndex());
         holderRectTransform.sizeDelta = rectTransform.sizeDelta;
@@ -62,7 +60,6 @@ public class PulseElement : MonoBehaviour
 
         transform.SetParent(holder.transform, false);
 
-        // Set up this rect transform
         rectTransform.anchorMax = new Vector2(1, 1);
         rectTransform.anchorMin = new Vector2(0, 0);
         rectTransform.pivot = new Vector2(0.5f, 0.5f);
@@ -75,8 +72,7 @@ public class PulseElement : MonoBehaviour
     private void Update()
     {
         if (isCloned) return;
-        
-        // Recalculate size delta
+
         var newHolderSizeDelta = holderRectTransform.sizeDelta;
         var rectSizeDelta = rectTransform.sizeDelta;
         newHolderSizeDelta.x += rectSizeDelta.x;
@@ -91,12 +87,10 @@ public class PulseElement : MonoBehaviour
             throw new InvalidOperationException("Pulse element not initialized yet");
         }
 
-        // Create clone
         cloning = true;
         var clone = Instantiate(gameObject, holder.transform);
         clone.name = "Pulse";
         Destroy(clone.GetComponent<PulseElement>());
-        Destroy(clone.GetComponent<ScheduledPulse>());
         cloning = false;
 
         if (overlay) clone.transform.SetAsLastSibling(); else clone.transform.SetAsFirstSibling();
@@ -104,17 +98,14 @@ public class PulseElement : MonoBehaviour
         {
             if (componentsToDestroyAfterClone.Any(it => it.GetType() == component.GetType()))
             {
-                //print("Destroyed " + component.GetType());
                 Destroy(component);
             }
             else if (typesToDestroyAfterClone.Any(it => it == component.GetType()))
             {
-                //print("Destroyed " + component.GetType());
                 Destroy(component);
             }
         }
 
-        // Pulse
         var canvasGroup = clone.GetComponent<CanvasGroup>();
         if (canvasGroup == null)
         {
@@ -128,11 +119,9 @@ public class PulseElement : MonoBehaviour
     private async void PostPulse(GameObject clone, CanvasGroup canvasGroup)
     {
         if (this == null || canvasGroup == null || clone == null) return;
-        
+
         var cloneRectTransform = clone.GetComponent<RectTransform>();
 
-        // BUG: Fix your shitty UI system, Unity.
-        // Rebuild layout until clone has the correct rect (same as the original)
         var equal = false;
         while (!equal)
         {
@@ -141,7 +130,7 @@ public class PulseElement : MonoBehaviour
             equal = cloneRectTransform.rect == rectTransform.rect;
             await UniTask.Yield();
         }
-        
+
         canvasGroup.alpha = initialAlpha;
         canvasGroup.DOFade(0, duration);
         if (overrideFinalSizeY)
@@ -156,8 +145,7 @@ public class PulseElement : MonoBehaviour
         {
             clone.GetComponent<RectTransform>().DOScale(finalSize, duration).SetEase(ease);
         }
-        
-        
+
         await UniTask.Delay(TimeSpan.FromSeconds(duration));
 
         Destroy(clone);
@@ -165,7 +153,6 @@ public class PulseElement : MonoBehaviour
 }
 
 #if UNITY_EDITOR
-
 [CustomEditor(typeof(PulseElement))]
 public class PulseElementEditor : Editor
 {
@@ -180,5 +167,4 @@ public class PulseElementEditor : Editor
         }
     }
 }
-
 #endif

@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using LiteDB;
 using UnityEngine;
 
 public class Level
@@ -8,8 +7,7 @@ public class Level
 
     public LevelType Type;
     public bool IsLocal;
-    public OnlineLevel OnlineLevel;
-    
+
     public LevelMeta Meta;
     public LevelRecord Record;
     
@@ -21,37 +19,42 @@ public class Level
     {
     }
 
-    public static Level FromLocal(string path, LevelType type, LevelMeta meta, LiteDatabase database = null)
+    public static Level FromLocal(string path, LevelType type, LevelMeta meta)
     {
         return new Level {
             Type = type,
             IsLocal = true,
             Path = path,
             Meta = meta,
-            Record = (database ?? Context.Database).GetLevelRecord(meta.id) ?? new LevelRecord{LevelId = meta.id}
+            Record = new LevelRecord {LevelId = meta.id}
         };
     }
     
-    public static Level FromRemote(LevelType type, LevelMeta meta, LiteDatabase db = null)
+    public static Level FromRemote(LevelType type, LevelMeta meta)
     {
         return new Level {
             Type = type,
             IsLocal = false,
             Meta = meta,
-            Record = (db ?? Context.Database).GetLevelRecord(meta.id) ?? new LevelRecord{LevelId = meta.id}
+            Record = new LevelRecord {LevelId = meta.id}
         };
     }
 
-    public void SaveRecord(LiteDatabase db = null)
+    public static Level FromExternal(LevelMeta meta, string path = null)
     {
-        (db ?? Context.Database).SetLevelRecord(Record);
+        return new Level {
+            Type = LevelType.Temp,
+            IsLocal = false,
+            Path = path ?? string.Empty,
+            Meta = meta,
+            Record = new LevelRecord {LevelId = meta.id}
+        };
     }
 
     public void CopyFrom(Level other)
     {
         Type = other.Type;
         IsLocal = other.IsLocal;
-        OnlineLevel = other.OnlineLevel;
         Meta = other.Meta;
         Record = other.Record;
         Path = other.Path;

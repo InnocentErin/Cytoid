@@ -8,15 +8,14 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.RadialBlur != null)
-                {
-                    Provider.RadialBlur.enabled = From.RadialBlur.Value;
-                    if (From.RadialBlur.Value && From.RadialBlurIntensity != null)
-                        Provider.RadialBlur.Intensity = EaseFloat(From.RadialBlurIntensity, To.RadialBlurIntensity);
-                }
-            }
+            if (!Config.UseEffects) return;
+
+            if (From.RadialBlur == null) return;
+
+            var effect = Provider.Effects.RadialBlur;
+            effect.Enabled = From.RadialBlur.Value;
+            if (From.RadialBlur.Value && From.RadialBlurIntensity != null)
+                effect.Intensity = EaseFloat(From.RadialBlurIntensity, To.RadialBlurIntensity);
         }
     }
 }

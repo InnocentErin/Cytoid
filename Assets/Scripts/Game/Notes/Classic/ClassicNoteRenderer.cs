@@ -26,11 +26,11 @@ public class ClassicNoteRenderer : NoteRenderer
         Fill.enabled = false;
         
         // Generate note ID
-        if (Game.Config.DisplayNoteIds || Game is PlayerGame)
+        if (Game.Config.DisplayNoteIds)
         {
             DisplayNoteId = true;
             NoteId = Object.Instantiate(GameObjectProvider.Instance.noteIdPrefab, Note.transform);
-            NoteId.Visible = Game.Config.DisplayNoteIds || (Game is PlayerGame playerGame && !playerGame.HideInterface);
+            NoteId.Visible = true;
             NoteId.gameObject.SetActive(false);
         }
     }
@@ -74,7 +74,7 @@ public class ClassicNoteRenderer : NoteRenderer
 
     protected override void Render()
     {
-        if (NoteId != null) NoteId.Visible = !(Game is PlayerGame playerGame) || !playerGame.HideInterface;
+        if (NoteId != null) NoteId.Visible = true;
         UpdateComponentStates();
         UpdateColors();
         UpdateTransformScale();

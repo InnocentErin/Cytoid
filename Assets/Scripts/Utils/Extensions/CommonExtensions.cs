@@ -7,8 +7,6 @@ using DG.Tweening;
 using DG.Tweening.Core;
 using DG.Tweening.Plugins.Options;
 using Newtonsoft.Json;
-using Proyecto26;
-using RSG;
 using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEngine.Events;
@@ -585,78 +583,6 @@ public static class CommonExtensions
     public static void PrintJson(this object obj)
     {
         Debug.Log(JsonConvert.SerializeObject(obj));
-    }
-
-    public static IPromise<T> AbortOnScreenBecameInactive<T>(this IPromise<T> promise, Screen screen)
-    {
-        var isAborted = false;
-        void SetAbort() => isAborted = true;
-        screen.onScreenBecameInactive.AddListener(SetAbort);
-        return promise.Then(data =>
-        {
-            if (screen == null || isAborted)
-            {
-                throw new RequestAbortedException();
-            }
-            return data;
-        }).Finally(() =>
-        {
-            if (screen == null) return;
-            screen.onScreenBecameInactive.RemoveListener(SetAbort);
-        });
-    }
-
-    public static IPromise<T> CatchRequestError<T>(this IPromise<T> promise, Func<RequestException, T> onRejected)
-    {
-        return promise.Catch(exception =>
-        {
-            if (exception is RequestException requestException)
-            {
-                return onRejected(requestException);
-            }
-            Debug.LogError($"Exception thrown by promise");
-            Debug.LogError(exception);
-            throw exception;
-        });
-    }
-    
-    public static IPromise CatchRequestError<T>(this IPromise<T> promise, Action<RequestException> onRejected)
-    {
-        return promise.Catch(exception =>
-        {
-            if (exception is RequestException requestException)
-            {
-                onRejected(requestException);
-            }
-            else
-            {
-                Debug.LogError($"Exception thrown by promise");
-                Debug.LogError(exception);
-                throw exception;
-            }
-        });
-    }
-    
-    public static IPromise CatchRequestError(this IPromise promise, Action<RequestException> onRejected)
-    {
-        return promise.Catch(exception =>
-        {
-            if (exception is RequestAbortedException)
-            {
-                Debug.Log("Request canceled by promise");
-                return;
-            }
-            if (exception is RequestException requestException)
-            {
-                onRejected(requestException);
-            }
-            else
-            {
-                Debug.LogError($"Exception thrown by promise");
-                Debug.LogError(exception);
-                throw exception;
-            }
-        });
     }
 
     public static void CopyRectFrom(this RectTransform rectTransform, RectTransform target)

@@ -8,17 +8,13 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.ColorFilter != null)
-                {
-                    Provider.ColorFilter.enabled = From.ColorFilter.Value;
-                    if (From.ColorFilter.Value && From.ColorFilterColor != null)
-                    {
-                        Provider.ColorFilter.ColorRGB = EaseColor(From.ColorFilterColor, To.ColorFilterColor);
-                    }
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.ColorFilter == null) return;
+
+            var effect = Provider.Effects.ColorFilter;
+            effect.Enabled = From.ColorFilter.Value;
+            if (From.ColorFilter.Value)
+                effect.ColorRgb = EaseColor(From.ColorFilterColor, To.ColorFilterColor);
         }
     }
 }

@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 public class ScoreText : MonoBehaviour
 {
-    [GetComponent] public Text text;
+    public Text text;
     public Game game;
     public float punchScale = 1.2f;
     public float punchDuration = 0.2f;
@@ -13,8 +13,14 @@ public class ScoreText : MonoBehaviour
     private double lastScore;
     private Sequence lastSequence;
 
+    private void OnValidate()
+    {
+        this.AutoFill(ref text);
+    }
+
     protected void Awake()
     {
+        this.AutoFill(ref text);
         text.text = "";
     }
 

@@ -6,11 +6,23 @@ using UnityEngine.EventSystems;
 
 public class ModPill : InteractableMonoBehavior
 {
-    [GetComponent] public CanvasGroup canvasGroup;
-    [GetComponent] public PulseElement pulseElement;
+    public CanvasGroup canvasGroup;
+    public PulseElement pulseElement;
     public Mod mod;
     public List<Mod> modsToDisable;
     public bool isStatic;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref canvasGroup);
+        this.AutoFill(ref pulseElement);
+    }
+
+    private void Awake()
+    {
+        this.AutoFill(ref canvasGroup);
+        this.AutoFill(ref pulseElement);
+    }
 
     private void Update()
     {
@@ -45,10 +57,7 @@ public class ModPill : InteractableMonoBehavior
         }
 
         if (pulse) pulseElement.Pulse();
-        
-        // Save config
+
         Context.Player.Settings.EnabledMods = Context.SelectedMods.ToList();
-        Context.Player.SaveSettings();
     }
-    
 }

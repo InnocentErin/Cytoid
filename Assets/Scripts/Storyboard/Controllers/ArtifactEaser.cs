@@ -8,36 +8,21 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Artifact != null)
-                {
-                    Provider.Artifact.enabled = From.Artifact.Value;
-                    if (From.Artifact.Value)
-                    {
-                        if (From.ArtifactIntensity != null)
-                        {
-                            Provider.Artifact.Fade = EaseFloat(From.ArtifactIntensity, To.ArtifactIntensity);
-                        }
+            if (!Config.UseEffects) return;
+            if (From.Artifact == null) return;
 
-                        if (From.ArtifactColorisation != null)
-                        {
-                            Provider.Artifact.Colorisation =
-                                EaseFloat(From.ArtifactColorisation, To.ArtifactColorisation);
-                        }
+            var effect = Provider.Effects.Artifact;
+            effect.Enabled = From.Artifact.Value;
+            if (!From.Artifact.Value) return;
 
-                        if (From.ArtifactParasite != null)
-                        {
-                            Provider.Artifact.Parasite = EaseFloat(From.ArtifactParasite, To.ArtifactParasite);
-                        }
-
-                        if (From.ArtifactNoise != null)
-                        {
-                            Provider.Artifact.Noise = EaseFloat(From.ArtifactNoise, To.ArtifactNoise);
-                        }
-                    }
-                }
-            }
+            if (From.ArtifactIntensity != null)
+                effect.Fade = EaseFloat(From.ArtifactIntensity, To.ArtifactIntensity);
+            if (From.ArtifactColorisation != null)
+                effect.Colorisation = EaseFloat(From.ArtifactColorisation, To.ArtifactColorisation);
+            if (From.ArtifactParasite != null)
+                effect.Parasite = EaseFloat(From.ArtifactParasite, To.ArtifactParasite);
+            if (From.ArtifactNoise != null)
+                effect.Noise = EaseFloat(From.ArtifactNoise, To.ArtifactNoise);
         }
     }
 }

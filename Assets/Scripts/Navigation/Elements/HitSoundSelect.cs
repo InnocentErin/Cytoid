@@ -36,12 +36,13 @@ public class HitSoundSelect : MonoBehaviour, ScreenBecameActiveListener
         "SETTINGS_HIT_SOUND_QUACK",
     };
 
-    [GetComponentInChildren] public CaretSelect select;
+    public CaretSelect select;
 
     public Game game;
 
     private void Awake()
     {
+        select = GetComponentInChildren<CaretSelect>();
         if (game != null)
         {
             game.onGameLoaded.AddListener(_ => Load());
@@ -64,7 +65,6 @@ public class HitSoundSelect : MonoBehaviour, ScreenBecameActiveListener
         select.onSelect.AddListener((_, it) =>
         {
             lp.Settings.HitSound = it;
-            lp.SaveSettings();
             if (it != "none")
             {
                 var audioClip = Resources.Load<AudioClip>("Audio/HitSounds/" + it);

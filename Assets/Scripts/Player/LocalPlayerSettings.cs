@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using LiteDB;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Polyglot;
@@ -13,21 +12,9 @@ using JsonWriter = Newtonsoft.Json.JsonWriter;
 [Serializable]
 public class LocalPlayerSettings
 {
-
-    public ObjectId Id { get; set; }
-    
     [JsonProperty("schema_version")] public int SchemaVersion { get; set; }
 
-    [JsonProperty("cdn_region")] public CdnRegion CdnRegion { get; set; } = CdnRegion.International;
-    [JsonProperty("cdn_region")] public string DebugApiUrl { get; set; } = "http://localhost:4000";
-
     [JsonProperty("player_id")] public string PlayerId { get; set; }
-
-    [JsonProperty("login_token")] public string LoginToken { get; set; }
-
-    [JsonProperty("character_id")] public string ActiveCharacterId { get; set; }
-
-    [JsonProperty("play_character_theme")] public bool PlayCharacterTheme { get; set; } = true;
 
     [JsonProperty("language")] public int Language { get; set; } = 0;
     [JsonProperty("play_ranked")] public bool PlayRanked { get; set; } = false;
@@ -120,13 +107,13 @@ public class LocalPlayerSettings
     [JsonProperty("graphics_quality")]
     public GraphicsQuality GraphicsQuality { get; set; } =
         Application.platform == RuntimePlatform.Android ? GraphicsQuality.Medium : GraphicsQuality.High;
-    [JsonProperty("base_note_offset")] public float BaseNoteOffset { get; set; } =
-        Application.platform == RuntimePlatform.Android ? 0.2f : 0.1f;
+    [JsonProperty("base_note_offset")] public float BaseNoteOffset { get; set; } = 0f;
 
     [JsonProperty("headset_note_offset")] public float HeadsetNoteOffset { get; set; } = -0.05f;
     [JsonProperty("judgment_offset")] public float JudgmentOffset { get; set; } = 0;
     [JsonProperty("clear_effects_size")] public float ClearEffectsSize { get; set; } = 0; // -0.5~0.5
     [JsonProperty("display_profiler")] public bool DisplayProfiler { get; set; } = false;
+    [JsonProperty("adapt_overlay_to_safe_area")] public bool AdaptOverlayToSafeArea { get; set; } = true;
     [JsonProperty("display_note_ids")] public bool DisplayNoteIds { get; set; } = false;
     [JsonProperty("local_level_sort")] public LevelSort LocalLevelSort { get; set; } = LevelSort.AddedDate;
 
@@ -137,8 +124,6 @@ public class LocalPlayerSettings
 
     [JsonProperty("use_experimental_note_ar")] public bool UseExperimentalNoteAr { get; set; } = false;
     [JsonProperty("use_experimental_note_animations")] public bool UseExperimentalNoteAnimations { get; set; } = true;
-
-    [JsonProperty("use_developer_console")] public bool UseDeveloperConsole { get; set; } = false;
 
     [JsonProperty("local_level_sort_is_ascending")]
     public bool LocalLevelSortIsAscending { get; set; } = false;
@@ -172,100 +157,6 @@ public class LocalPlayerSettings
     [JsonProperty("total_launches")] 
     public int TotalLaunches { get; set; } = 0;
 
-}
-
-public enum CdnRegion
-{
-    International,
-    MainlandChina,
-    Debug
-}
-
-[Serializable]
-public class RegionInfo
-{
-    public string countryCode;
-    public string ip;
-}
-
-public static class CdnRegionExtensions
-{
-
-    public static string GetPackageUrl(this CdnRegion region, string levelId)
-    {
-        return $"{region.GetApiUrl()}/levels/{levelId}/resources";
-    }
-    
-    public static string GetApiUrl(this CdnRegion region)
-    {
-        switch (region)
-        {
-            case CdnRegion.International:
-                return "https://services.cytoid.io";
-            case CdnRegion.MainlandChina:
-                return "https://api.cytoid.cn";
-            case CdnRegion.Debug:
-                return Context.Player.Settings.DebugApiUrl;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(region), region, null);
-        }
-    }
-    
-    public static string GetWebsiteUrl(this CdnRegion region)
-    {
-        switch (region)
-        {
-            case CdnRegion.International:
-            case CdnRegion.Debug:
-                return "https://cytoid.io";
-            case CdnRegion.MainlandChina:
-                return "https://cytoid.cn";
-            default:
-                throw new ArgumentOutOfRangeException(nameof(region), region, null);
-        }
-    }
-    
-    public static string GetBundleRemoteBaseUrl(this CdnRegion region)
-    {
-        switch (region)
-        {
-            case CdnRegion.International:
-            case CdnRegion.Debug:
-                return "https://artifacts.cytoid.io";
-            case CdnRegion.MainlandChina:
-                return "https://artifacts.cytoid.cn";
-            default:
-                throw new ArgumentOutOfRangeException(nameof(region), region, null);
-        }
-    }
-    
-    public static string GetStoreUrl(this CdnRegion region)
-    {
-        switch (region)
-        {
-            case CdnRegion.International:
-            case CdnRegion.Debug:
-                if (Application.platform == RuntimePlatform.IPhonePlayer)
-                {
-                    return "https://apps.apple.com/us/app/cytoid/id1266582726";
-                }
-                else
-                {
-                    return "https://play.google.com/store/apps/details?id=me.tigerhix.cytoid";
-                }
-            case CdnRegion.MainlandChina:
-                if (Application.platform == RuntimePlatform.IPhonePlayer)
-                {
-                    return "https://apps.apple.com/us/app/cytoid/id1266582726";
-                }
-                else
-                {
-                    return "https://www.taptap.com/app/158749";
-                }
-            default:
-                throw new ArgumentOutOfRangeException(nameof(region), region, null);
-        }
-    }
 }
 
 public enum GraphicsQuality

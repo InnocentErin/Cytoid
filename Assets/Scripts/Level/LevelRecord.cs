@@ -1,15 +1,11 @@
 using System;
 using System.Collections.Generic;
-using LiteDB;
 using Newtonsoft.Json;
 using UnityEngine;
 
 [Serializable]
 public class LevelRecord
 {
-    
-    public int Id { get; set; }
-    
     [JsonProperty("level_id")] public string LevelId { get; set; }
 
     [JsonProperty("relative_note_offset")] public float RelativeNoteOffset { get; set; } = 0;

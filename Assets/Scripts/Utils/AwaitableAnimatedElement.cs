@@ -6,17 +6,25 @@ using UnityEngine;
 
 public class AwaitableAnimatedElement : InteractableMonoBehavior
 {
-    [GetComponent] public Animator animator;
-    [GetComponent] public CanvasGroup canvasGroup;
+    public Animator animator;
+    public CanvasGroup canvasGroup;
     public bool entryOnScreenBecameActive;
     public bool exitOnScreenBecameInactive;
-    
+
     public string entryState = "Entry";
     public string exitState = "Exit";
     public string finalState = "Exit";
 
+    private void OnValidate()
+    {
+        this.AutoFill(ref animator);
+        this.AutoFill(ref canvasGroup);
+    }
+
     protected virtual void Awake()
     {
+        this.AutoFill(ref animator);
+        this.AutoFill(ref canvasGroup);
         canvasGroup.alpha = 0;
         canvasGroup.blocksRaycasts = false;
         var screen = this.GetScreenParent();

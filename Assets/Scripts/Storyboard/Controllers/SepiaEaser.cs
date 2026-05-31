@@ -8,17 +8,13 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Sepia != null)
-                {
-                    Provider.Sepia.enabled = From.Sepia.Value;
-                    if (From.Sepia.Value && From.SepiaIntensity != null)
-                    {
-                        Provider.Sepia._Fade = EaseFloat(From.SepiaIntensity, To.SepiaIntensity);
-                    }
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.Sepia == null) return;
+
+            var effect = Provider.Effects.Sepia;
+            effect.Enabled = From.Sepia.Value;
+            if (From.Sepia.Value && From.SepiaIntensity != null)
+                effect.Fade = EaseFloat(From.SepiaIntensity, To.SepiaIntensity);
         }
     }
 }

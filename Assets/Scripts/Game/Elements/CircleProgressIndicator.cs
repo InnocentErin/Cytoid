@@ -5,8 +5,8 @@ using UnityEngine.UI;
 
 public class CircleProgressIndicator : MonoBehaviour
 {
-    [GetComponent] public Image image;
-    [GetComponentInChildren] public Text text;
+    public Image image;
+    public Text text;
 
     public float Progress
     {
@@ -26,9 +26,17 @@ public class CircleProgressIndicator : MonoBehaviour
 
     private float progress;
     private Sequence tweenSequence;
-    
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref image);
+        this.AutoFillInChildren(ref text);
+    }
+
     private void Awake()
     {
+        this.AutoFill(ref image);
+        this.AutoFillInChildren(ref text);
         Text = "";
         image.fillAmount = 0;
     }

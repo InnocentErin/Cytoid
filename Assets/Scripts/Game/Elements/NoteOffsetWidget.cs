@@ -4,8 +4,8 @@ using UnityEngine.UI;
 
 public class NoteOffsetWidget : MonoBehaviour
 {
-    [GetComponent] public CanvasGroup canvasGroup;
-    [GetComponent] public TransitionElement transitionElement;
+    public CanvasGroup canvasGroup;
+    public TransitionElement transitionElement;
 
     public Sprite compressSprite;
     public Sprite expandSprite;
@@ -25,8 +25,16 @@ public class NoteOffsetWidget : MonoBehaviour
     private float offset;
     private bool isCollapsed;
 
+    private void OnValidate()
+    {
+        this.AutoFill(ref canvasGroup);
+        this.AutoFill(ref transitionElement);
+    }
+
     private void Awake()
     {
+        this.AutoFill(ref canvasGroup);
+        this.AutoFill(ref transitionElement);
         canvasGroup.alpha = 0;
         collapseButton.onPointerClick.AddListener(_ =>
         {
@@ -87,7 +95,6 @@ public class NoteOffsetWidget : MonoBehaviour
         game.ResynchronizeChartOnNextFrame = true;
         // Save config
         game.Level.Record.RelativeNoteOffset = (float) Math.Round(offset, 2);
-        game.Level.SaveRecord();
     }
 
     private void UpdateOffsetText()

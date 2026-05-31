@@ -8,17 +8,13 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Noise != null)
-                {
-                    Provider.Noise.enabled = From.Noise.Value;
-                    if (From.Noise.Value && From.NoiseIntensity != null)
-                    {
-                        Provider.Noise.Noise = EaseFloat(From.NoiseIntensity, To.NoiseIntensity);
-                    }
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.Noise == null) return;
+
+            var effect = Provider.Effects.Noise;
+            effect.Enabled = From.Noise.Value;
+            if (From.Noise.Value && From.NoiseIntensity != null)
+                effect.Noise = EaseFloat(From.NoiseIntensity, To.NoiseIntensity);
         }
     }
 }

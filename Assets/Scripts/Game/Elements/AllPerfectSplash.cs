@@ -1,4 +1,4 @@
-public class AllPerfectSplash : AwaitableAnimatedElement
+public class AllPerfectSplash : CleanTitleTransitionElement
 {
     public Game game;
     

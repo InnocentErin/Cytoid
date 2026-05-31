@@ -3,12 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using DG.Tweening;
 using Unity.SharpZipLib.Zip;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Proyecto26;
-using RSG;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
@@ -21,7 +18,6 @@ public class LevelManager
 
     public readonly LevelInstallProgressEvent OnLevelInstallProgress = new LevelInstallProgressEvent();
     public readonly LevelLoadProgressEvent OnLevelLoadProgress = new LevelLoadProgressEvent();
-    public readonly LevelEvent OnLevelMetaUpdated = new LevelEvent();
 
     public readonly Dictionary<string, Level> LoadedLocalLevels = new Dictionary<string, Level>();
     private readonly HashSet<string> loadedPaths = new HashSet<string>();
@@ -252,58 +248,10 @@ public class LevelManager
         }
 
         var level = LoadedLocalLevels[id];
-        level.Record.AddedDate = DateTimeOffset.MinValue;
-        level.SaveRecord();
 
         Directory.Delete(Path.GetDirectoryName(level.Path) ?? throw new InvalidOperationException(), true);
         LoadedLocalLevels.Remove(level.Id);
         loadedPaths.Remove(level.Path);
-    }
-
-    public Promise<LevelMeta> FetchLevelMeta(string levelId, bool updateLocal = false)
-    {
-        return new Promise<LevelMeta>((resolve, reject) =>
-        {
-            RestClient.Get<OnlineLevel>(new RequestHelper
-            {
-                Uri = $"{Context.ApiUrl}/levels/{levelId}",
-                Headers = Context.OnlinePlayer.GetRequestHeaders()
-            }).Then(it =>
-            {
-                var remoteMeta = it.GenerateLevelMeta();
-                if (updateLocal && LoadedLocalLevels.ContainsKey(levelId))
-                {
-                    var localLevel = LoadedLocalLevels[levelId];
-                    localLevel.OnlineLevel = it;
-                    if (UpdateLevelMeta(localLevel, remoteMeta))
-                    {
-                        Debug.Log($"Level meta updated for {localLevel.Id}");
-                        OnLevelMetaUpdated.Invoke(localLevel);
-                    }
-                }
-
-                resolve(remoteMeta);
-            }).CatchRequestError(error =>
-            {
-                if (!error.IsNetworkError && (error.StatusCode == 404 || error.StatusCode == 403))
-                {
-                    if (error.StatusCode == 404)
-                    {
-                        Debug.Log($"Level {levelId} does not exist on the remote server");
-                    }
-                    else
-                    {
-                        Debug.Log($"Level {levelId} cannot be accessed on the remote server");
-                    }
-                }
-                else
-                {
-                    Debug.LogError(error);
-                }
-
-                reject(error);
-            });
-        });
     }
 
     public async UniTask<bool> UnpackLevelPackage(string packagePath, string destFolder)
@@ -584,16 +532,11 @@ public class LevelManager
 
                     timer.Time("Validate");
 
-                    var db = Context.Database;
                     await UniTask.SwitchToThreadPool();
-                    var level = Level.FromLocal(path, type, meta, db);
-                    var record = level.Record;
-                    if (record.AddedDate == DateTimeOffset.MinValue)
+                    var level = Level.FromLocal(path, type, meta);
+                    if (level.Record.AddedDate == DateTimeOffset.MinValue)
                     {
-                        record.AddedDate = Context.Library.Levels.ContainsKey(level.Id)
-                            ? Context.Library.Levels[level.Id].Date
-                            : info.LastWriteTimeUtc;
-                        level.SaveRecord();
+                        level.Record.AddedDate = info.LastWriteTimeUtc;
                     }
                     await UniTask.SwitchToMainThread();
                     timer.Time("LevelRecord");
@@ -793,258 +736,6 @@ public class LevelManager
         }
 
         return updated;
-    }
-
-    public void DownloadAndUnpackLevelDialog(
-        Level level,
-        bool allowAbort = true,
-        Action onDownloadSucceeded = default,
-        Action onDownloadAborted = default,
-        Action onDownloadFailed = default,
-        Action<Level> onUnpackSucceeded = default,
-        Action onUnpackFailed = default,
-        bool forceInternational = false,
-        bool batchDownloading = false,
-        int batchDownloadCurrent = default,
-        int batchDownloadTotal = default
-    )
-    {
-        if (!Context.OnlinePlayer.IsAuthenticated)
-        {
-            Toast.Next(Toast.Status.Failure, "TOAST_SIGN_IN_REQUIRED".Get());
-            return;
-        }
-        if (onDownloadSucceeded == default) onDownloadSucceeded = () => { };
-        if (onDownloadAborted == default) onDownloadAborted = () => { };
-        if (onDownloadFailed == default) onDownloadFailed = () => { };
-        if (onUnpackSucceeded == default) onUnpackSucceeded = _ => { };
-        if (onUnpackFailed == default) onUnpackFailed = () => { };
-
-        var dialog = Dialog.Instantiate();
-        dialog.Message = batchDownloading ? "DIALOG_BATCH_DOWNLOADING_P_Q".Get(batchDownloadCurrent, batchDownloadTotal) : "DIALOG_DOWNLOADING".Get();
-
-        dialog.UseProgress = true;
-        dialog.UsePositiveButton = false;
-        dialog.UseNegativeButton = allowAbort;
-
-        ulong downloadedSize;
-        var totalSize = 0UL;
-        var downloading = false;
-        var aborted = false;
-        var targetFile = $"{Application.temporaryCachePath}/Downloads/{level.Id}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.cytoidlevel";
-        var destFolder = $"{level.Type.GetDataPath()}/{level.Id}";
-
-        try
-        {
-            Directory.CreateDirectory(destFolder);
-        }
-        catch (Exception error)
-        {
-            Debug.LogError("Failed to create level folder.");
-            Debug.LogError(error);
-            onDownloadFailed();
-            return;
-        }
-
-        if (level.IsLocal)
-        {
-            // Write to the local folder instead
-            destFolder = level.Path;
-        }
-
-        // Download detail first, then package
-        RequestHelper req;
-        var downloadHandler = new DownloadHandlerFile(targetFile)
-        {
-            removeFileOnAbort = true
-        };
-        RestClient.Get<OnlineLevel>(req = new RequestHelper
-        {
-            Uri = $"{(forceInternational ? CdnRegion.International.GetApiUrl() : Context.ApiUrl)}/levels/{level.Id}",
-            Headers = Context.OnlinePlayer.GetRequestHeaders(),
-            EnableDebug = true
-        }).Then(it =>
-        {
-            if (aborted)
-            {
-                throw new OperationCanceledException();
-            }
-
-            totalSize = (ulong)it.Size;
-            downloading = true;
-            var packagePath = (forceInternational ? CdnRegion.International : Context.CdnRegion).GetPackageUrl(level.Id);
-            Debug.Log($"Package path: {packagePath}");
-            // Get resources
-            return RestClient.Post<OnlineLevelResources>(req = new RequestHelper
-            {
-                Uri = packagePath,
-                Headers = Context.OnlinePlayer.GetRequestHeaders(),
-                BodyString = SecuredOperations.WithCaptcha(new { }).ToString(),
-                EnableDebug = true
-            });
-        }).Then(res =>
-        {
-            if (aborted)
-            {
-                throw new OperationCanceledException();
-            }
-
-            Debug.Log($"Asset path: {res.package}");
-            // Start download
-            // TODO: Change to HttpClient
-            return RestClient.Get(req = new RequestHelper
-            {
-                Uri = res.package,
-                DownloadHandler = downloadHandler,
-                WillParseBody = false
-            });
-        }).Then(async res =>
-        {
-            downloading = false;
-
-            try
-            {
-                onDownloadSucceeded();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError(e);
-            }
-
-            dialog.OnNegativeButtonClicked = it => { };
-            dialog.UseNegativeButton = false;
-            dialog.Progress = 0;
-            dialog.Message = "DIALOG_UNPACKING".Get();
-            DOTween.To(() => dialog.Progress, value => dialog.Progress = value, 1f, 1f).SetEase(Ease.OutCubic);
-
-            var success = await Context.LevelManager.UnpackLevelPackage(targetFile, destFolder);
-            if (success)
-            {
-                try
-                {
-                    level =
-                        (await Context.LevelManager.LoadFromMetadataFiles(level.Type, new List<string> { destFolder + "/level.json" }, true))
-                        .First();
-                    onUnpackSucceeded(level);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError(e);
-                    onUnpackFailed();
-                }
-            }
-            else
-            {
-                try
-                {
-                    onUnpackFailed();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError(e);
-                }
-            }
-
-            dialog.Close();
-            File.Delete(targetFile);
-        }).Catch(error =>
-        {
-            if (aborted || error is OperationCanceledException || (req != null && req.IsAborted))
-            {
-                try
-                {
-                    onDownloadAborted();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError(e);
-                }
-            }
-            else
-            {
-                if (!forceInternational
-                    && error is RequestException requestException
-                    && requestException.StatusCode < 400 && requestException.StatusCode >= 500)
-                {
-                    DownloadAndUnpackLevelDialog(
-                        level,
-                        allowAbort,
-                        onDownloadSucceeded,
-                        onDownloadAborted,
-                        onDownloadFailed,
-                        onUnpackSucceeded,
-                        onUnpackFailed,
-                        true
-                    );
-                }
-                else
-                {
-                    Debug.LogError(error);
-                    try
-                    {
-                        onDownloadFailed();
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogError(e);
-                    }
-                }
-            }
-
-            dialog.Close();
-        });
-
-        dialog.onUpdate.AddListener(it =>
-        {
-            if (!downloading) return;
-            if (req.Request == null)
-            {
-                // Download was cancelled due to Unity
-                Debug.LogError("UWR download failed");
-                try
-                {
-                    onDownloadFailed();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError(e);
-                }
-                dialog.Close();
-                return;
-            }
-            if (totalSize > 0)
-            {
-                downloadedSize = req.DownloadedBytes;
-                it.Progress = downloadedSize * 1.0f / totalSize;
-
-                if (batchDownloading)
-                {
-                    it.Message = "DIALOG_BATCH_DOWNLOADING_P_Q_R_S_T".Get(batchDownloadCurrent, batchDownloadTotal, level.Meta.title, downloadedSize.ToHumanReadableFileSize(),
-                        totalSize.ToHumanReadableFileSize());
-                }
-                else
-                {
-                    it.Message = "DIALOG_DOWNLOADING_X_Y".Get(downloadedSize.ToHumanReadableFileSize(),
-                        totalSize.ToHumanReadableFileSize());
-                }
-            }
-            else
-            {
-                it.Message = batchDownloading ? "DIALOG_BATCH_DOWNLOADING_P_Q".Get(batchDownloadCurrent, batchDownloadTotal) : "DIALOG_DOWNLOADING".Get();
-            }
-        });
-        if (allowAbort)
-        {
-            dialog.OnNegativeButtonClicked = it =>
-            {
-                aborted = true;
-                req?.Abort();
-
-                dialog.Close();
-            };
-        }
-
-        dialog.Open();
     }
 
 }

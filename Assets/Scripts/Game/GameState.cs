@@ -11,7 +11,7 @@ public sealed class GameState
 
     public Difficulty Difficulty { get; }
 
-    public string ChartChecksum { get; }
+    public bool IsExternalContent { get; }
 
     public int DifficultyLevel { get; }
 
@@ -73,6 +73,7 @@ public sealed class GameState
         }
     }
 
+    private readonly Game game;
     private bool isFullScorePossible = true;
     private readonly Dictionary<NoteGrade, int> gradeCounts = new Dictionary<NoteGrade, int>();
     private readonly double noteScoreMultiplierFactor;
@@ -91,12 +92,13 @@ public sealed class GameState
 
     public GameState(Game game, GameMode mode, HashSet<Mod> mods)
     {
+        this.game = game;
         Level = game.Level;
         Difficulty = game.Difficulty;
+        IsExternalContent = game.UsesExternalContent;
         DifficultyLevel = Level.Meta.GetDifficultyLevel(Difficulty.Id);
         Mode = mode;
         Mods = new HashSet<Mod>(mods);
-        ChartChecksum = SecuredOperations.CalculateChartChecksum(Level, Difficulty);
 
         NoteCount = game.Chart.Model.note_list.Count;
         game.Chart.Model.note_list.ForEach(it => Judgements[it.id] = new NoteJudgement());
@@ -111,13 +113,16 @@ public sealed class GameState
         {
             case GameMode.Tier:
             {
-                Context.TierState.Stages[Context.TierState.CurrentStageIndex] = this;
-                // Keep allowed mods only
+                var session = game.TierPlaySession;
+                if (session == null)
+                {
+                    throw new InvalidOperationException("TierPlaySession is required for Tier mode");
+                }
+
                 Mods.IntersectWith(AllowedTierMods);
                 if (Application.isEditor && game.EditorForceAutoMod) Mods.Add(Mod.Auto);
-                // Use max health from meta
-                MaxHealth = Context.TierState.Tier.Meta.maxHealth;
-                Health = MaxHealth;
+                MaxHealth = session.MaxHealth;
+                Health = session.InitialHealth;
                 break;
             }
             case GameMode.Calibration:
@@ -126,34 +131,6 @@ public sealed class GameState
                 if (Application.isEditor && game.EditorForceAutoMod) Mods.Add(Mod.Auto);
                 break;
         }
-    }
-
-    public GameState()
-    {
-        IsCompleted = true;
-        Mods = new HashSet<Mod>();
-        Score = 1000000;
-        Accuracy = 1.000000;
-        MaxCombo = 1;
-        gradeCounts = new Dictionary<NoteGrade, int>
-        {
-            {NoteGrade.Perfect, 1},
-            {NoteGrade.Great, 0},
-            {NoteGrade.Good, 0},
-            {NoteGrade.Bad, 0},
-            {NoteGrade.Miss, 0}
-        };
-        Level = MockData.CommunityLevel;
-        Difficulty = Difficulty.Parse(Level.Meta.charts[0].type);
-        ChartChecksum = SecuredOperations.CalculateChartChecksum(Level, Difficulty);
-    }
-
-    public GameState(GameMode mode, Level level, Difficulty difficulty) : this()
-    {
-        Mode = mode;
-        Level = level;
-        Difficulty = difficulty;
-        ChartChecksum = SecuredOperations.CalculateChartChecksum(Level, Difficulty);
     }
 
     public void FillTestData(int noteCount)
@@ -217,10 +194,12 @@ public sealed class GameState
 
         if (Mode == GameMode.Tier)
         {
-            if (miss) Context.TierState.Combo = 0;
-            else Context.TierState.Combo++;
-            if (Context.TierState.Combo > Context.TierState.MaxCombo)
-                Context.TierState.MaxCombo = Context.TierState.Combo;
+            var session = game.TierPlaySession;
+            if (session != null)
+            {
+                if (miss) session.OnMiss();
+                else session.OnNonMissHit();
+            }
         }
 
         // Score multiplier
@@ -339,10 +318,6 @@ public sealed class GameState
             Health = Math.Min(Math.Max(Health, 0), MaxHealth);
             if (Health <= 0) ShouldFail = true;
 
-            if (Mode == GameMode.Tier)
-            {
-                Context.TierState.Health = Health;
-            }
         }
 
         if (
@@ -370,10 +345,6 @@ public sealed class GameState
 
     public void OnFail()
     {
-        if (Mode == GameMode.Tier)
-        {
-            Context.TierState.IsFailed = true;
-        }
     }
 
     private void OnCompleteGuard()

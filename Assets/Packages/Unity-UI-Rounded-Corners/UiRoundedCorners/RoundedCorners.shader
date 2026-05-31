@@ -13,6 +13,7 @@ Shader "UI/RoundedCorners/RoundedCorners" {
         
         // Definition in Properties section is required to Mask works properly
         _WidthHeightRadius ("WidthHeightRadius", Vector) = (0,0,0,0)
+        _BorderWidth ("BorderWidth", Float) = 0
         // ---
     }
     
@@ -49,14 +50,19 @@ Shader "UI/RoundedCorners/RoundedCorners" {
             #pragma vertex vert
             #pragma fragment frag
             
-            #include "./../../Coffee/UIExtensions/SoftMaskForUGUI/SoftMask.cginc"	// Add for soft mask
+            #include "Packages/com.coffee.softmask-for-ugui/SoftMask.cginc"
 			#pragma shader_feature __ SOFTMASK_EDITOR	// Add for soft mask
             
             float4 _WidthHeightRadius;
+            float _BorderWidth;
             sampler2D _MainTex;
 
             fixed4 frag (v2f i) : SV_Target {
-                float alpha = CalcAlpha(i.uv, _WidthHeightRadius.xy, _WidthHeightRadius.z);
+                float2 samplePositionTranslated = (i.uv - .5) * _WidthHeightRadius.xy;
+                float distToRect = roundedRectangle(samplePositionTranslated, _WidthHeightRadius.z, _WidthHeightRadius.xy * .5);
+                float outerAlpha = AntialiasedCutoff(distToRect);
+                float innerAlpha = (_BorderWidth > 0) ? AntialiasedCutoff(distToRect + _BorderWidth) : 0;
+                float alpha = outerAlpha - innerAlpha;
                 return mixAlpha(tex2D(_MainTex, i.uv), i.color, alpha * SoftMask(i.vertex, i.vertex));
             }
             

@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cytoid.Storyboard.Controllers;
+using Cytoid.Storyboard.PostProcess;
 using Cytoid.Storyboard.Sprites;
 using Cytoid.Storyboard.Texts;
 using Cytoid.Storyboard.Videos;
 using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Video;
 using LineRenderer = Cytoid.Storyboard.Sprites.LineRenderer;
 using SpriteRenderer = Cytoid.Storyboard.Sprites.SpriteRenderer;
 
@@ -73,100 +75,10 @@ namespace Cytoid.Storyboard
 
         private void ResetCameraFilters()
         {
-            Provider.RadialBlur.Apply(it =>
-            {
-                it.enabled = false;
-                it.Intensity = 0.025f;
-            });
-            Provider.ColorAdjustment.Apply(it =>
-            {
-                it.enabled = false;
-                it.Brightness = 1;
-                it.Saturation = 1;
-                it.Contrast = 1;
-            });
-            Provider.GrayScale.Apply(it =>
-            {
-                it.enabled = false;
-                it._Fade = 1;
-            });
-            Provider.Noise.Apply(it =>
-            {
-                it.enabled = false;
-                it.Noise = 0.2f;
-            });
-            Provider.ColorFilter.Apply(it =>
-            {
-                it.enabled = false;
-                it.ColorRGB = UnityEngine.Color.white;
-            });
-            Provider.Sepia.Apply(it =>
-            {
-                it.enabled = false;
-                it._Fade = 1;
-            });
-            Provider.Dream.Apply(it =>
-            {
-                it.enabled = false;
-                it.Distortion = 1;
-            });
-            Provider.Fisheye.Apply(it =>
-            {
-                it.enabled = false;
-                it.Distortion = 0.5f;
-            });
-            Provider.Shockwave.Apply(it =>
-            {
-                it.enabled = false;
-                it.TimeX = 1.0f;
-                it.Speed = 1;
-            });
-            Provider.Focus.Apply(it =>
-            {
-                it.enabled = false;
-                it.Size = 1;
-                it.Color = UnityEngine.Color.white;
-                it.Speed = 5;
-                it.Intensity = 0.25f;
-            });
-            Provider.Glitch.Apply(it =>
-            {
-                it.enabled = false;
-                it.Glitch = 1f;
-            });
-            Provider.Artifact.Apply(it =>
-            {
-                it.enabled = false;
-                it.Fade = 1;
-                it.Colorisation = 1;
-                it.Parasite = 1;
-                it.Noise = 1;
-            });
-            Provider.Arcade.Apply(it =>
-            {
-                it.enabled = false;
-                it.Interferance_Size = 1;
-                it.Interferance_Speed = 0.5f;
-                it.Contrast = 1;
-                it.Fade = 1;
-            });
-            Provider.Chromatical.Apply(it =>
-            {
-                it.enabled = false;
-                it.Fade = 1;
-                it.Intensity = 1;
-                it.Speed = 1;
-            });
-            Provider.Tape.Apply(it =>
-            {
-                it.enabled = false;
-            });
-            Provider.SleekRender.Apply(it =>
-            {
-                it.enabled = false;
-                it.settings.bloomEnabled = false;
-                it.settings.bloomIntensity = 0;
-            });
+            if (StoryboardEffects.Current != null)
+                StoryboardEffects.Current.ResetToDefaults();
+            else
+                Provider.Effects.ResetToDefaults();
         }
 
         public void Dispose()
@@ -210,14 +122,22 @@ namespace Cytoid.Storyboard
             {
                 Dispose();
             });
-            Game.onGamePaused.AddListener(_ =>
+            Game.onGamePaused.AddListener(_ => SyncAllVideoPlayback());
+            Game.onGameUnpaused.AddListener(_ => SyncAllVideoPlayback());
+        }
+
+        private void SyncAllVideoPlayback()
+        {
+            if (!TypedComponentRenderers.TryGetValue(typeof(Video), out var renderers)) return;
+
+            var syncedPlayers = new HashSet<VideoPlayer>();
+            foreach (var renderer in renderers)
             {
-                // TODO: Pause SB
-            });
-            Game.onGameWillUnpause.AddListener(_ =>
-            {
-                // TODO: Unpause SB
-            });
+                if (renderer is not VideoRenderer videoRenderer) continue;
+                var player = videoRenderer.VideoPlayer;
+                if (player == null || !syncedPlayers.Add(player)) continue;
+                videoRenderer.SyncPlaybackWithGameState();
+            }
         }
 
         private async UniTask<List<TR>> SpawnObjects<TO, TS, TR>(List<TO> objects, Func<TO, TR> rendererCreator, Predicate<TO> predicate = default, Func<TO, TO> transformer = default) 
@@ -327,14 +247,7 @@ namespace Cytoid.Storyboard
                 var type = it.Value;
                 var renderer = ComponentRenderers[id];
                 
-                if (Game is PlayerGame)
-                {
-                    renderer.Clear();
-                }
-                else
-                {
-                    renderer.Dispose();
-                }
+                renderer.Dispose();
                 ComponentRenderers.Remove(id);
                 TypedComponentRenderers[type].Remove(renderer);
             });
@@ -383,8 +296,7 @@ namespace Cytoid.Storyboard
             if (!ComponentRenderers.ContainsKey(id)) return;
             ComponentRenderers[id].Let(it =>
             {
-                if (Game is PlayerGame) it.Clear();
-                else it.Dispose();
+                it.Dispose();
                 TypedComponentRenderers[it.GetType()].Remove(it);
             });
             ComponentRenderers.Remove(id);

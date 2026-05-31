@@ -3,8 +3,18 @@ using UnityEngine.UI;
 
 public class GameTimeText : MonoBehaviour
 {
-    [GetComponent] public Text text;
+    public Text text;
     public Game game;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref text);
+    }
+
+    private void Awake()
+    {
+        this.AutoFill(ref text);
+    }
 
     private void Update()
     {

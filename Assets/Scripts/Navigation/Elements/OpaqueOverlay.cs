@@ -1,31 +1,45 @@
 using System;
-using DG.Tweening;
 using Cysharp.Threading.Tasks;
+using DG.Tweening;
 using UnityEngine;
 
 public class OpaqueOverlay : SingletonMonoBehavior<OpaqueOverlay>
 {
-    [GetComponent] public Canvas canvas;
-    [GetComponent] public CanvasGroup canvasGroup;
-    
+    private const int SortingOrder = 181;
+
+    public Canvas canvas;
+    public CanvasGroup canvasGroup;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref canvas);
+        this.AutoFill(ref canvasGroup);
+    }
+
+    private void Awake()
+    {
+        this.AutoFill(ref canvas);
+        this.AutoFill(ref canvasGroup);
+    }
+
     private void Start()
     {
         canvas.enabled = false;
         canvasGroup.enabled = false;
         canvas.overrideSorting = true;
-        canvas.sortingOrder = NavigationSortingOrder.OpaqueOverlay;
+        canvas.sortingOrder = SortingOrder;
         canvasGroup.alpha = 0;
         canvasGroup.blocksRaycasts = false;
         canvasGroup.interactable = false;
     }
-    
+
     public static async void Show(float duration = 0.8f, Action onFullyShown = null)
     {
         Instance.Apply(it =>
         {
             it.canvas.enabled = true;
             it.canvas.overrideSorting = true;
-            it.canvas.sortingOrder = NavigationSortingOrder.OpaqueOverlay;
+            it.canvas.sortingOrder = SortingOrder;
             it.canvasGroup.enabled = true;
             it.canvasGroup.blocksRaycasts = true;
             it.canvasGroup.interactable = true;
@@ -53,9 +67,6 @@ public class OpaqueOverlay : SingletonMonoBehavior<OpaqueOverlay>
         await UniTask.Delay(TimeSpan.FromSeconds(duration));
         Instance.canvas.enabled = false;
         Instance.canvasGroup.enabled = false;
-        if (onFullyHidden != null)
-        {
-            onFullyHidden();
-        }
+        onFullyHidden?.Invoke();
     }
 }

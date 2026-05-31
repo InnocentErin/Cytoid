@@ -123,15 +123,6 @@ public abstract class Note : MonoBehaviour
 
     protected virtual void OnGameUpdate(Game _)
     {
-        // Reset cleared status in player mode
-        if (Game is PlayerGame && IsCleared)
-        {
-            if (TimeUntilStart >= 0)
-            {
-                IsCleared = false;
-            }
-        }
-
         if (!IsCleared)
         {
             // Update position

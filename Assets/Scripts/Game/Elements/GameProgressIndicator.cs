@@ -1,24 +1,32 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.UI.ProceduralImage;
 
 public class GameProgressIndicator : MonoBehaviour
 {
-    [GetComponent] public ProceduralImage image;
+    public Image image;
 
     public Game game;
-    
-    private float fullWidth;
-    
+
+    private CanvasScaler canvasScaler;
+    private RectTransform parentRectTransform;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref image);
+    }
+
     private void Awake()
     {
-        fullWidth = GetComponentInParent<CanvasScaler>().referenceResolution.x;
+        this.AutoFill(ref image);
+        canvasScaler = GetComponentInParent<CanvasScaler>();
+        parentRectTransform = transform.parent as RectTransform;
         image.rectTransform.SetWidth(0);
         game.onGameUpdate.AddListener(OnGameUpdate);
     }
 
     private void OnGameUpdate(Game game)
     {
+        var fullWidth = GetFullWidth();
         if (game.State.UseHealthSystem)
         {
             image.rectTransform.DOWidth((float) (fullWidth * game.State.Health / game.State.MaxHealth), 0.2f);
@@ -28,5 +36,14 @@ public class GameProgressIndicator : MonoBehaviour
             image.rectTransform.DOWidth(fullWidth * game.ChartProgress, 0.2f);
         }
     }
-    
+
+    private float GetFullWidth()
+    {
+        if (parentRectTransform != null && parentRectTransform.rect.width > 0)
+        {
+            return parentRectTransform.rect.width;
+        }
+
+        return canvasScaler != null ? canvasScaler.referenceResolution.x : image.rectTransform.rect.width;
+    }
 }

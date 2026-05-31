@@ -106,6 +106,13 @@ namespace Cytoid.Storyboard.Videos
         public override void Update(VideoState fromState, VideoState toState)
         {
             base.Update(fromState, toState);
+            SyncPlaybackWithGameState();
+        }
+
+        public void SyncPlaybackWithGameState()
+        {
+            if (VideoPlayer == null || MainRenderer == null) return;
+
             if (!MainRenderer.Game.State.IsPlaying)
             {
                 if (VideoPlayer.isPlaying)
@@ -113,20 +120,10 @@ namespace Cytoid.Storyboard.Videos
                     VideoPlayer.Pause();
                 }
             }
-            else
+            else if (!VideoPlayer.isPlaying)
             {
-                if (!VideoPlayer.isPlaying)
-                {
-                    VideoPlayer.Play();
-                    // var seek = MainRenderer.Time - fromState.Time;
-                    // if (seek > 0)
-                    // {
-                    //     VideoPlayer.time = seek;
-                    //     VideoPlayer.Play();
-                    // }
-                }
+                VideoPlayer.Play();
             }
         }
-        
     }
 }

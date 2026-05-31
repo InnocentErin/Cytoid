@@ -8,17 +8,13 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Glitch != null)
-                {
-                    Provider.Glitch.enabled = From.Glitch.Value;
-                    if (From.Glitch.Value && From.GlitchIntensity != null)
-                    {
-                        Provider.Glitch.Glitch = EaseFloat(From.GlitchIntensity, To.GlitchIntensity);
-                    }
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.Glitch == null) return;
+
+            var effect = Provider.Effects.Glitch;
+            effect.Enabled = From.Glitch.Value;
+            if (From.Glitch.Value && From.GlitchIntensity != null)
+                effect.Glitch = EaseFloat(From.GlitchIntensity, To.GlitchIntensity);
         }
     }
 }

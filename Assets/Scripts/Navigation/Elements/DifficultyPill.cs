@@ -6,13 +6,12 @@ using UnityEngine.UI;
 
 public class DifficultyPill : InteractableMonoBehavior, ScreenBecameActiveListener
 {
-    [GetComponent] public CanvasGroup canvasGroup;
+    public CanvasGroup canvasGroup;
 
-    [GetComponentInChildrenName("Background")]
     public GradientMeshEffect gradientMesh;
 
-    [GetComponentInChildrenName("Name")] public Text name;
-    [GetComponentInChildrenName("Level")] public Text level;
+    public Text name;
+    public Text level;
     public PulseElement pulseElement;
     public bool isStatic;
 
@@ -22,8 +21,20 @@ public class DifficultyPill : InteractableMonoBehavior, ScreenBecameActiveListen
     private LevelMeta.ChartSection section;
     public Difficulty Difficulty { get; private set; }
 
+    private void OnValidate()
+    {
+        this.AutoFill(ref canvasGroup);
+        this.AutoFillInChildrenByName(ref gradientMesh, "Background");
+        this.AutoFillInChildrenByName(ref name, "Name");
+        this.AutoFillInChildrenByName(ref level, "Level");
+    }
+
     protected void Awake()
     {
+        this.AutoFill(ref canvasGroup);
+        this.AutoFillInChildrenByName(ref gradientMesh, "Background");
+        this.AutoFillInChildrenByName(ref name, "Name");
+        this.AutoFillInChildrenByName(ref level, "Level");
         gradientMesh.SetGradient(new ColorGradient(Color.clear, Color.clear, 0));
         name.text = "";
         level.text = "";
@@ -75,17 +86,8 @@ public class DifficultyPill : InteractableMonoBehavior, ScreenBecameActiveListen
     {
         base.OnPointerClick(eventData);
         if (isStatic) return;
-        var willUpdateScreenInfo = Context.PreferredDifficulty != Difficulty;
         Select();
         Context.PreferredDifficulty = Difficulty;
-        if (willUpdateScreenInfo)
-        {
-            this.GetScreenParent<GamePreparationScreen>().Apply(it =>
-            {
-                it.LoadLevelPerformance();
-                it.rankingsTab.UpdateRankings(it.Level.Id, Context.SelectedDifficulty.Id);
-            });
-        }
     }
 
     public void Select(bool pulse = true)

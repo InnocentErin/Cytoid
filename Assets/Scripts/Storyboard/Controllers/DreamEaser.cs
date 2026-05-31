@@ -8,17 +8,13 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Dream != null)
-                {
-                    Provider.Dream.enabled = From.Dream.Value;
-                    if (From.Dream.Value && From.DreamIntensity != null)
-                    {
-                        Provider.Dream.Distortion = EaseFloat(From.DreamIntensity, To.DreamIntensity);
-                    }
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.Dream == null) return;
+
+            var effect = Provider.Effects.Dream;
+            effect.Enabled = From.Dream.Value;
+            if (From.Dream.Value && From.DreamIntensity != null)
+                effect.Distortion = EaseFloat(From.DreamIntensity, To.DreamIntensity);
         }
     }
 }

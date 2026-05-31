@@ -262,14 +262,26 @@ public class AudioManager : SingletonMonoBehavior<AudioManager>
                 Stop();
                 Source.clip = null;
             }
-            audioClip.UnloadAudioData();
-            if (!isResource)
+            if (audioClip != null)
             {
-                Destroy(audioClip);
-            }
-            else
-            {
-                Resources.UnloadAsset(audioClip);
+                try
+                {
+                    audioClip.UnloadAudioData();
+                }
+                catch (MissingReferenceException)
+                {
+                }
+                catch (NullReferenceException)
+                {
+                }
+                if (!isResource)
+                {
+                    Destroy(audioClip);
+                }
+                else
+                {
+                    Resources.UnloadAsset(audioClip);
+                }
             }
         }
 

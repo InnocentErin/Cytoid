@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Threading;
-using DG.Tweening;
 using Cysharp.Threading.Tasks;
-using UnityEditor;
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [RequireComponent(typeof(CanvasGroup))]
 public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActiveListener
@@ -17,8 +19,14 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
     [HideInInspector] public UnityEvent onLeaveStarted = new UnityEvent();
     [HideInInspector] public UnityEvent onLeaveCompleted = new UnityEvent();
 
-    [GetComponent] public RectTransform rectTransform;
-    [GetComponent] public CanvasGroup canvasGroup;
+    public RectTransform rectTransform;
+    public CanvasGroup canvasGroup;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref rectTransform);
+        this.AutoFill(ref canvasGroup);
+    }
 
     public Transition enterFrom = Transition.Default;
     public float enterMultiplier = 1;
@@ -57,9 +65,11 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
 
     private CancellationTokenSource waitingForTransition;
     private List<CancellationTokenSource> transitioning = new List<CancellationTokenSource>();
-    
+
     protected void Awake()
     {
+        this.AutoFill(ref rectTransform);
+        this.AutoFill(ref canvasGroup);
         if (hiddenOnStart)
         {
             canvasGroup.alpha = 0;
@@ -71,14 +81,14 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
         }
     }
 
-    protected async void Start()
+    protected void Start()
     {
         if (!actOnOtherGameObjects && (rectTransform.gameObject != gameObject || canvasGroup.gameObject != gameObject))
         {
             Debug.LogError($"WARNING! TransitionElement {name} rectTransform and canvasGroup not set to self. (rectTransform: {rectTransform.gameObject.name}, canvasGroup: {canvasGroup.gameObject.name})");
         }
     }
-    
+
     public void UseCurrentStateAsDefault()
     {
         specifiedDefault = true;
@@ -152,7 +162,7 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
 
         if (IsInTransition)
         {
-            if (toShow == IsEntering) return; // Cancel same operation
+            if (toShow == IsEntering) return;
             if (waitForTransition)
             {
                 try
@@ -186,7 +196,6 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
             }
             catch
             {
-                // Cancelled
                 IsInTransition = false;
                 return;
             }
@@ -287,7 +296,6 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
             }
             catch
             {
-                // Cancelled
                 IsInTransition = false;
             }
         }
@@ -329,12 +337,11 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
 
     public void OnScreenBecameActive()
     {
-        // Do not manipulate any layout. Others are changing the layout groups at this time.
     }
 
     public async void OnScreenPostActive()
     {
-        await UniTask.DelayFrame(0); // Ensure this gets executed the last
+        await UniTask.DelayFrame(0);
         if (enterOnScreenBecomeActive)
         {
             if (enterOnScreenBecomeActiveDelay > 0)
@@ -365,7 +372,6 @@ public class TransitionElement : MonoBehaviour, ScreenListener, ScreenPostActive
 }
 
 #if UNITY_EDITOR
-
 [CustomEditor(typeof(TransitionElement))]
 public class TransitionElementEditor : Editor
 {
@@ -392,5 +398,4 @@ public class TransitionElementEditor : Editor
         }
     }
 }
-
 #endif

@@ -3,10 +3,12 @@ using UnityEngine;
 using UnityEngine.UI;
 
 [ExecuteInEditMode]
+[UnityEngine.Scripting.Preserve]
 public class ImageWithIndependentRoundedCorners : MonoBehaviour {
 	
 	public Vector4 r;
 	public Material material;
+	public float borderWidth;
 	
 	// xy - position,
 	// zw - halfSize
@@ -15,6 +17,7 @@ public class ImageWithIndependentRoundedCorners : MonoBehaviour {
 	private readonly int prop_halfSize = Shader.PropertyToID("_halfSize");
 	private readonly int prop_radiuses = Shader.PropertyToID("_r");
 	private readonly int prop_rect2props = Shader.PropertyToID("_rect2props");
+	private static readonly int prop_borderWidth = Shader.PropertyToID("_BorderWidth");
 	
 	// Vector2.right rotated clockwise by 45 degrees
 	private static readonly Vector2 wNorm = new Vector2(.7071068f, -.7071068f);
@@ -68,6 +71,7 @@ public class ImageWithIndependentRoundedCorners : MonoBehaviour {
 		material.SetVector(prop_rect2props, rect2props);
 		material.SetVector(prop_halfSize, rect.size * .5f);
 		material.SetVector(prop_radiuses, r);
+		material.SetFloat(prop_borderWidth, borderWidth);
 	}
 
 }

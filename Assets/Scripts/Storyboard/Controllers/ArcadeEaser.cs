@@ -8,37 +8,21 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Arcade != null)
-                {
-                    Provider.Arcade.enabled = From.Arcade.Value;
-                    if (From.Arcade.Value)
-                    {
-                        if (From.ArcadeIntensity != null)
-                        {
-                            Provider.Arcade.Fade = EaseFloat(From.ArcadeIntensity, To.ArcadeIntensity);
-                        }
+            if (!Config.UseEffects) return;
+            if (From.Arcade == null) return;
 
-                        if (From.ArcadeInterferanceSize != null)
-                        {
-                            Provider.Arcade.Interferance_Size =
-                                EaseFloat(From.ArcadeInterferanceSize, To.ArcadeInterferanceSize);
-                        }
+            var effect = Provider.Effects.Arcade;
+            effect.Enabled = From.Arcade.Value;
+            if (!From.Arcade.Value) return;
 
-                        if (From.ArcadeInterferanceSpeed != null)
-                        {
-                            Provider.Arcade.Interferance_Speed =
-                                EaseFloat(From.ArcadeInterferanceSpeed, To.ArcadeInterferanceSpeed);
-                        }
-
-                        if (From.ArcadeContrast != null)
-                        {
-                            Provider.Arcade.Contrast = EaseFloat(From.ArcadeContrast, To.ArcadeContrast);
-                        }
-                    }
-                }
-            }
+            if (From.ArcadeIntensity != null)
+                effect.Fade = EaseFloat(From.ArcadeIntensity, To.ArcadeIntensity);
+            if (From.ArcadeInterferanceSize != null)
+                effect.InterferanceSize = EaseFloat(From.ArcadeInterferanceSize, To.ArcadeInterferanceSize);
+            if (From.ArcadeInterferanceSpeed != null)
+                effect.InterferanceSpeed = EaseFloat(From.ArcadeInterferanceSpeed, To.ArcadeInterferanceSpeed);
+            if (From.ArcadeContrast != null)
+                effect.Contrast = EaseFloat(From.ArcadeContrast, To.ArcadeContrast);
         }
     }
 }

@@ -1,6 +1,6 @@
 using UnityEngine.UI;
 
-public class TierIntroSplash : AwaitableAnimatedElement
+public class TierIntroSplash : CleanTitleTransitionElement
 {
     public Game game;
     public Text text;
@@ -13,10 +13,12 @@ public class TierIntroSplash : AwaitableAnimatedElement
 
     public void OnGameLoaded()
     {
-        if (game.State.Mode == GameMode.Tier && Context.TierState.CurrentStageIndex == 0)
-        {
-            text.text = Context.TierState.Tier.Meta.name;
-            game.BeforeStartTasks.Add(Animate());
-        }
+        if (game.State.Mode != GameMode.Tier) return;
+
+        var introLabel = game.TierPlaySession?.IntroLabel;
+        if (string.IsNullOrEmpty(introLabel)) return;
+
+        text.text = introLabel;
+        game.BeforeStartTasks.Add(Animate());
     }
 }

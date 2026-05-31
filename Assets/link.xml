@@ -46,5 +46,8 @@
         <type fullname="System.Linq.Expressions.Interpreter.LightLambda" preserve="all"/>
         <type fullname="System.Linq.Expressions.LambdaExpression" preserve="all"/>
     </assembly>
-    <assembly fullname="LiteDB" preserve="all"/>
+    <assembly fullname="Nobi.UiRoundedCorners">
+        <type fullname="ImageWithRoundedCorners" preserve="all"/>
+        <type fullname="ImageWithIndependentRoundedCorners" preserve="all"/>
+    </assembly>
 </linker>

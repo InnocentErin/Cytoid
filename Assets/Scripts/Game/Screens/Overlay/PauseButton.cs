@@ -8,19 +8,27 @@ public class PauseButton : InteractableMonoBehavior
 {
     public Game game;
 
-    [GetComponent] public TransitionElement transitionElement;
-    [GetComponent] public InteractableMonoBehavior interactableMonoBehavior;
+    public TransitionElement transitionElement;
+    public InteractableMonoBehavior interactableMonoBehavior;
     public CanvasGroup canvasGroup;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref transitionElement);
+        this.AutoFill(ref interactableMonoBehavior);
+    }
 
     public float normalOpacity = 0.3f;
     public float highlightedOpacity = 0.7f;
     public float animationDuration = 0.4f;
-    
+
     private bool highlighted = false;
     private float willUnhighlightTimestamp = 0;
-    
+
     protected void Awake()
     {
+        this.AutoFill(ref transitionElement);
+        this.AutoFill(ref interactableMonoBehavior);
         canvasGroup.alpha = normalOpacity;
         canvasGroup.interactable = false;
         game.onGameLoaded.AddListener(game =>

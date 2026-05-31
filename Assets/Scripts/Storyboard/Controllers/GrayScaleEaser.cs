@@ -8,17 +8,13 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.GrayScale != null)
-                {
-                    Provider.GrayScale.enabled = From.GrayScale.Value;
-                    if (From.GrayScale.Value && From.GrayScaleIntensity != null)
-                    {
-                        Provider.GrayScale._Fade = EaseFloat(From.GrayScaleIntensity, To.GrayScaleIntensity);
-                    }
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.GrayScale == null) return;
+
+            var effect = Provider.Effects.GrayScale;
+            effect.Enabled = From.GrayScale.Value;
+            if (From.GrayScale.Value && From.GrayScaleIntensity != null)
+                effect.Fade = EaseFloat(From.GrayScaleIntensity, To.GrayScaleIntensity);
         }
     }
 }

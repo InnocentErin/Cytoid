@@ -12,10 +12,7 @@ public class RadioGroup : MonoBehaviour
 
     private string value;
 
-    public string Value
-    {
-        get => value;
-    }
+    public string Value => value;
 
     public RadioGroupSelectEvent onSelect = new RadioGroupSelectEvent();
 
@@ -35,7 +32,7 @@ public class RadioGroup : MonoBehaviour
         value = defaultValue;
 
         if (!Context.FontManager.Loaded) await UniTask.WaitUntil(() => Context.FontManager.Loaded);
-        
+
         RadioButtons.ForEach(it => it.Unselect());
         if (RadioButtons.Any(it => it.value == value))
         {
@@ -66,11 +63,21 @@ public class RadioGroup : MonoBehaviour
     {
         if (value == null) value = defaultValue;
         if (value == this.value) return;
+        if (RadioButtons.Count == 0) RadioButtons = GetComponentsInChildren<RadioButton>().ToList();
+        if (RadioButtons.Count == 0)
+        {
+            this.value = value;
+            if (notify)
+            {
+                onSelect.Invoke(value);
+            }
+            return;
+        }
 
         this.value = value;
         if (selected != null) selected.Unselect();
         selected = RadioButtons.FirstOrDefault(it => it.value == value);
-        if (selected == default) selected = RadioButtons.First(); // Default to first value
+        if (selected == default) selected = RadioButtons.First();
         selected.Select(false);
         if (notify)
         {
@@ -82,7 +89,6 @@ public class RadioGroup : MonoBehaviour
     {
         Select(defaultValue, notify);
     }
-
 }
 
 public class RadioGroupSelectEvent : UnityEvent<string>

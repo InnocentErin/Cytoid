@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Cytoid.Storyboard;
-using Lean.Touch;
 using UnityEngine;
 
 public class GlobalCalibrator
@@ -35,9 +34,7 @@ public class GlobalCalibrator
         
         // Reset offset
         Context.Player.Settings.BaseNoteOffset = 0;
-        Context.Player.SaveSettings();
         game.Level.Record.RelativeNoteOffset = 0;
-        game.Level.SaveRecord();
 
         // Hide overlay UI
         StoryboardRendererProvider.Instance.UiCanvasGroup.alpha = 0;
@@ -63,7 +60,7 @@ public class GlobalCalibrator
             await UniTask.Delay(4000);
 
             messageText.Enqueue("OFFSET_SETUP_WIZARD_2".Get());
-            LeanTouch.OnFingerDown += OnFingerDown;
+            GameTouchInput.FingerDown += OnFingerDown;
             await UniTask.WaitUntil(() => needRetry || calibratedFourMeasures,
                 cancellationToken: cancelSource.Token);
 
@@ -110,7 +107,7 @@ public class GlobalCalibrator
         }
     }
 
-    private void OnFingerDown(LeanFinger finger)
+    private void OnFingerDown(GameFinger finger)
     {
         var lastNote = game.Chart.Model.note_list.FindLast(it => it.start_time - 0.5f < game.Time);
         var error = game.Time - lastNote.start_time;
@@ -138,7 +135,7 @@ public class GlobalCalibrator
         {
             if (calibratedFourMeasures)
             {
-                LeanTouch.OnFingerDown -= OnFingerDown;
+                GameTouchInput.FingerDown -= OnFingerDown;
                 PromptComplete();
             }
             else
@@ -152,17 +149,17 @@ public class GlobalCalibrator
     private void AskSkipCalibration()
     {
         if (calibrationCompleted) return;
-        
-        LeanTouch.OnFingerDown -= OnFingerDown;
-        game.Complete(true);
-        Dialog.Prompt("OFFSET_SETUP_WIZARD_DIALOG_ASK_SKIP".Get(), Skip, Restart);
+
+        GameTouchInput.FingerDown -= OnFingerDown;
+        Debug.LogWarning("Offset setup skip prompt is unavailable in debug navigation.");
+        Skip();
     }
 
     private void Skip()
     {
         if (calibrationCompleted) return;
 
-        LeanTouch.OnFingerDown -= OnFingerDown;
+        GameTouchInput.FingerDown -= OnFingerDown;
         offsets.Clear();
         Complete();
     }
@@ -171,17 +168,16 @@ public class GlobalCalibrator
     {
         if (calibrationCompleted) return;
 
-        LeanTouch.OnFingerDown -= OnFingerDown;
-        calibrationCompleted = true;
-        game.Complete(true);
-        Dialog.PromptAlert("OFFSET_SETUP_WIZARD_DIALOG_COMPLETE".Get($"{offsets.Average():F3}"),
-            Complete
-        );
+        GameTouchInput.FingerDown -= OnFingerDown;
+        Debug.Log($"Offset setup complete: {offsets.Average():F3}");
+        Complete();
     }
 
-    private async void Complete()
+    private void Complete()
     {
-        LeanTouch.OnFingerDown -= OnFingerDown;
+        if (calibrationCompleted) return;
+
+        GameTouchInput.FingerDown -= OnFingerDown;
         calibrationCompleted = true;
         messageText.Enqueue(string.Empty, true);
         progressIndicator.Progress = 0;
@@ -190,7 +186,6 @@ public class GlobalCalibrator
         if (offsets.Count > 0)
         {
             Context.Player.Settings.BaseNoteOffset = (float) Math.Round((decimal) offsets.Average(), 3, MidpointRounding.AwayFromZero);
-            Context.Player.SaveSettings();
         }
 
         canExitSource.Cancel();
@@ -200,7 +195,7 @@ public class GlobalCalibrator
     public void Dispose()
     {
         if (disposed) return;
-        LeanTouch.OnFingerDown -= OnFingerDown;
+        GameTouchInput.FingerDown -= OnFingerDown;
         disposed = true;
         cancelSource.Cancel();
     }

@@ -8,13 +8,10 @@ namespace Cytoid.Storyboard.Controllers
 
         public override void OnUpdate()
         {
-            if (Config.UseEffects)
-            {
-                if (From.Tape != null)
-                {
-                    Provider.Tape.enabled = From.Tape.Value;
-                }
-            }
+            if (!Config.UseEffects) return;
+            if (From.Tape == null) return;
+
+            Provider.Effects.Tape.Enabled = From.Tape.Value;
         }
     }
 }

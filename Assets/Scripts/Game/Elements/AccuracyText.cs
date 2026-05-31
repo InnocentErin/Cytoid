@@ -4,11 +4,17 @@ using UnityEngine.UI;
 
 public class AccuracyText : MonoBehaviour
 {
-    [GetComponent] public Text text;
+    public Text text;
     public Game game;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref text);
+    }
 
     protected void Awake()
     {
+        this.AutoFill(ref text);
         text.text = "";
     }
 

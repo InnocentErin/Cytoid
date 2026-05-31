@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,9 +7,7 @@ using System.Threading;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
 using Cytoid.Storyboard;
-using LiteDB;
 using Polyglot;
-using Sentry;
 using UnityEditor;
 using UnityEngine.Events;
 using UnityEngine.Networking;
@@ -27,12 +25,14 @@ public class Game : MonoBehaviour
 
     public GameConfig Config { get; protected set; }
     public GameState State { get; protected set; }
+    public TierPlaySession TierPlaySession { get; private set; }
     public GameRenderer Renderer { get; protected set; }
 
     public Level Level { get; protected set; }
 
     public Difficulty Difficulty { get; protected set; }
     public Chart Chart { get; protected set; }
+    public bool UsesExternalContent => contentProvider?.IsExternal == true;
 
     public Cytoid.Storyboard.Storyboard Storyboard { get; protected set; }
 
@@ -64,6 +64,8 @@ public class Game : MonoBehaviour
     public bool EditorImmediatelyCompleteFail;
 
     public AudioManager.Controller Music { get; protected set; }
+    private IGameContentProvider contentProvider;
+    private bool preserveContentProviderOnDispose;
 
     public List<UniTask> BeforeStartTasks { get; protected set; } = new List<UniTask>();
     public List<UniTask> BeforeExitTasks { get; protected set; } = new List<UniTask>();
@@ -117,6 +119,12 @@ public class Game : MonoBehaviour
             // Not editor
             if (Context.SelectedGameMode != GameMode.Unspecified)
             {
+                if (GameEmbedMode.IsBridgeEmbedded)
+                {
+                    GameResultBridge.EmitError(e);
+                    return;
+                }
+
                 Context.GameErrorState = new GameErrorState {Message = "DIALOG_LEVEL_LOAD_ERROR".Get(), Exception = e};
 
                 await UniTask.Delay(TimeSpan.FromSeconds(3));
@@ -152,40 +160,39 @@ public class Game : MonoBehaviour
 
         if (mode == GameMode.Tier)
         {
-            var tierState = Context.TierState;
-            if (tierState == null)
+            var tierLaunch = Context.PendingTierPlay;
+            if (tierLaunch == null)
             {
-                await Context.LevelManager.LoadLevelsOfType(LevelType.Tier);
-                tierState = new TierState(MockData.Season.tiers[0]);
-                Context.TierState = tierState;
+                throw new ArgumentException("tierPlay is required when gameMode is Tier");
             }
 
-            if (tierState.IsFailed || tierState.IsCompleted)
-            {
-                // Reset tier state
-                tierState = new TierState(tierState.Tier);
-                Context.TierState = tierState;
-            }
-
-            tierState.CurrentStageIndex++;
-
-            Level = tierState.Tier.Meta.stages[Context.TierState.CurrentStageIndex].ToLevel(LevelType.Tier);
-            Difficulty = Difficulty.Parse(Level.Meta.charts.Last().type);
+            TierPlaySession = new TierPlaySession(tierLaunch);
+            Context.ActiveTierPlaySession = TierPlaySession;
         }
-        else if (mode == GameMode.GlobalCalibration)
-        {
-            // Load global calibration level
-            Level = await Context.LevelManager.LoadOrInstallBuiltInLevel(BuiltInData.GlobalCalibrationModeLevelId,
-                LevelType.Temp);
 
-            Difficulty = Level.Meta.GetEasiestDifficulty();
+        if (mode == GameMode.GlobalCalibration)
+        {
+            contentProvider = Context.GameContentProvider;
+            if (contentProvider != null)
+            {
+                Level = contentProvider.Level;
+                Difficulty = contentProvider.Difficulty;
+            }
+            else
+            {
+                // Load global calibration level
+                Level = await Context.LevelManager.LoadOrInstallBuiltInLevel(BuiltInData.GlobalCalibrationModeLevelId,
+                    LevelType.Temp);
+
+                Difficulty = Level.Meta.GetEasiestDifficulty();
+            }
 
             // Initialize global calibrator
             globalCalibrator = new GlobalCalibrator(this);
         }
         else
         {
-            if (Context.SelectedLevel == null && Application.isEditor)
+            if (Context.GameContentProvider == null && Context.SelectedLevel == null && Application.isEditor)
             {
                 // Load test level
                 await Context.LevelManager.LoadFromMetadataFiles(LevelType.User, new List<string>
@@ -196,39 +203,24 @@ public class Game : MonoBehaviour
                 Context.SelectedDifficulty = Context.SelectedLevel.Meta.GetHardestDifficulty();
             }
 
-            Level = Context.SelectedLevel;
-            Difficulty = Context.SelectedDifficulty;
+            contentProvider = Context.GameContentProvider ?? new FileGameContentProvider(Context.SelectedLevel, Context.SelectedDifficulty);
+            Level = contentProvider.Level;
+            Difficulty = contentProvider.Difficulty;
+        }
+
+        if (contentProvider == null)
+        {
+            contentProvider = new FileGameContentProvider(Level, Difficulty);
         }
 
         onGameReadyToLoad.Invoke(this);
 
         await Resources.UnloadUnusedAssets();
         
-        SentrySdk.AddBreadcrumb(
-            "Game preload",
-            data: new Dictionary<string, string>
-            {
-                { "Level", Level.Id },
-                { "Difficulty", Difficulty.ToString() }
-            },
-            level: BreadcrumbLevel.Info);
-
         // Load chart
         print("Loading chart");
-        var chartMeta = Level.Meta.GetChartSection(Difficulty.Id);
-        var chartPath = "file://" + Level.Path + chartMeta.path;
-        string chartText;
-        using (var request = UnityWebRequest.Get(chartPath))
-        {
-            await request.SendWebRequest();
-            if (request.isNetworkError || request.isHttpError)
-            {
-                Debug.LogError(request.error);
-                throw new Exception($"Failed to download chart from {chartPath}");
-            }
-
-            chartText = Encoding.UTF8.GetString(request.downloadHandler.data);
-        }
+        var chartMeta = contentProvider.ChartSection;
+        var chartText = await contentProvider.LoadChartText();
 
         var mods = new HashSet<Mod>(Context.SelectedMods);
         if (Application.isEditor && EditorForceAutoMod)
@@ -261,62 +253,22 @@ public class Game : MonoBehaviour
 
         if (Context.AudioManager == null) await UniTask.WaitUntil(() => Context.AudioManager != null);
         Context.AudioManager.Initialize();
-        var audioPath = "file://" + Level.Path + Level.Meta.GetMusicPath(Difficulty.Id);
-        var loader = new AudioClipLoader(audioPath);
-        await loader.Load();
-        if (loader.Error != null)
-        {
-            Debug.LogError(loader.Error);
-            throw new Exception($"Failed to download audio from {audioPath}");
-        }
-
-        Music = Context.AudioManager.Load("Level", loader.AudioClip, false, false, true);
+        var musicClip = await contentProvider.LoadMusic();
+        Music = Context.AudioManager.Load("Level", musicClip, false, false, true);
         MusicLength = Music.Length;
 
         // Load storyboard
-        string sbFile = null;
-        if (chartMeta.storyboard != null)
-        {
-            if (chartMeta.storyboard.localizations != null)
-            {
-                Debug.Log("Using localized storyboard");
-                sbFile = chartMeta.storyboard.localizations.GetOrDefault(Localization.Instance.SelectedLanguage.ToString());
-                if (sbFile == null)
-                {
-                    Debug.Log($"Localized storyboard for language {Localization.Instance.SelectedLanguage.ToString()} does not exist");
-                }
-            }
-            if (sbFile == null)
-            {
-                sbFile = chartMeta.storyboard.path;
-            }
-        }
-        if (sbFile == null)
-        {
-            sbFile = "storyboard.json";
-        }
-
-        StoryboardPath = Level.Path + sbFile;
-        
-        // if (Level.Id == "io.cytoid.searchingforyourlove")
-        // {
-        //     SentrySdk.CaptureMessage(
-        //         $"Language: {Localization.Instance.SelectedLanguage.ToString()}, Storyboard path: {StoryboardPath}, Exists: {File.Exists(StoryboardPath)}",
-        //         SentryLevel.Error);
-        // }
-
-        if (File.Exists(StoryboardPath))
+        var storyboardText = await contentProvider.LoadStoryboardText();
+        StoryboardPath = contentProvider.IsExternal ? null : Level.Path + (chartMeta.storyboard?.path ?? "storyboard.json");
+        if (!string.IsNullOrEmpty(storyboardText))
         {
             // Initialize storyboard
-            // TODO: Why File.ReadAllText() works but not UnityWebRequest?
-            // (UnityWebRequest downloaded text could not be parsed by Newtonsoft.Json)
             try
             {
-                var storyboardText = File.ReadAllText(StoryboardPath);
                 Storyboard = new Cytoid.Storyboard.Storyboard(this, storyboardText);
                 Storyboard.Parse();
                 await Storyboard.Initialize();
-                print($"Loaded storyboard from {StoryboardPath}");
+                print(contentProvider.IsExternal ? "Loaded storyboard from external payload" : $"Loaded storyboard from {StoryboardPath}");
             }
             catch (Exception e)
             {
@@ -336,8 +288,6 @@ public class Game : MonoBehaviour
         State = new GameState(this, mode, mods);
         Context.GameState = State;
 
-        if (Application.isEditor) Debug.Log("Chart checksum: " + State.ChartChecksum);
-
         Config = new GameConfig(this);
 
         // Touch handlers
@@ -350,9 +300,7 @@ public class Game : MonoBehaviour
         Application.targetFrameRate = 120;
         Context.SetAutoRotation(false);
 
-        // Update last played time
         Level.Record.LastPlayedDate = DateTimeOffset.UtcNow;
-        Level.SaveRecord();
 
         // Initialize note pool
         ObjectPool.Initialize();
@@ -364,6 +312,10 @@ public class Game : MonoBehaviour
         }
 
         onGameLoaded.Invoke(this);
+        if (GameEmbedMode.IsBridgeEmbedded)
+        {
+            GameBridge.HideHandoffOverlay();
+        }
 
         levelInfoParent.transform.RebuildLayout();
 
@@ -448,7 +400,7 @@ public class Game : MonoBehaviour
 
         if (!State.IsPlaying) return;
 
-        if (Input.GetKeyDown(KeyCode.Escape) && !(this is PlayerGame) && State.Mode != GameMode.Tier)
+        if (GameInputCompat.WasEscapePressedThisFrame() && State.Mode != GameMode.Tier)
         {
             Pause();
             return;
@@ -628,6 +580,10 @@ public class Game : MonoBehaviour
     {
         print("Game aborted");
 
+        var shouldEmitCalibrationResult = GameEmbedMode.IsBridgeEmbedded &&
+                                          (State.Mode == GameMode.Calibration ||
+                                           State.Mode == GameMode.GlobalCalibration);
+
         Music.Stop();
         // Resume DSP
         AudioListener.pause = false;
@@ -639,6 +595,19 @@ public class Game : MonoBehaviour
 
         Dispose();
 
+        if (GameEmbedMode.IsBridgeEmbedded)
+        {
+            if (shouldEmitCalibrationResult)
+            {
+                GameResultBridge.Emit(State);
+            }
+            else if (GameBridge.Instance != null)
+            {
+                await GameBridge.Instance.EndActivePlayFromGame();
+            }
+            return;
+        }
+
         var sceneLoader = new SceneLoader("Navigation");
         sceneLoader.Load();
         var transitioned = false;
@@ -648,15 +617,61 @@ public class Game : MonoBehaviour
         sceneLoader.Activate();
     }
 
+    public virtual void AbortExternalSession()
+    {
+        print("External game session aborted");
+
+        var shouldEmitCalibrationResult = GameEmbedMode.IsBridgeEmbedded &&
+                                          State != null &&
+                                          (State.Mode == GameMode.Calibration ||
+                                           State.Mode == GameMode.GlobalCalibration);
+
+        Music?.Stop();
+        AudioListener.pause = false;
+        Context.AudioManager.Unload("Level");
+
+        onGameAborted.Invoke(this);
+        if (shouldEmitCalibrationResult)
+        {
+            GameResultBridge.Emit(State);
+        }
+        Dispose();
+    }
+
     public virtual async void Retry()
     {
+        if (State.Mode == GameMode.Tier)
+        {
+            if (GameEmbedMode.IsBridgeEmbedded)
+            {
+                print("Tier retry requested — handing off to host");
+
+                var tierPlaySession = TierPlaySession;
+                Music.Stop();
+                Context.AudioManager.Unload("Level");
+                AudioListener.pause = false;
+                onGameRetried.Invoke(this);
+                Dispose();
+                GameResultBridge.EmitTierRetry(tierPlaySession);
+                Context.PendingTierPlay = null;
+                Context.ActiveTierPlaySession = null;
+                Context.GameState = null;
+                return;
+            }
+
+            Abort();
+            return;
+        }
+
         print("Game retried");
 
         // Unload resources
         Context.AudioManager.Unload("Level");
+        AudioListener.pause = false;
 
         onGameRetried.Invoke(this);
 
+        preserveContentProviderOnDispose = UsesExternalContent;
         Dispose();
 
         var sceneLoader = new SceneLoader("Game");
@@ -693,11 +708,6 @@ public class Game : MonoBehaviour
         State.IsCompleted = true;
 
         State.OnComplete();
-        if (State.Mode == GameMode.Tier)
-        {
-            Context.TierState.OnStageComplete();
-        }
-
         inputController.DisableInput();
 
         onGameCompleted.Invoke(this);
@@ -749,6 +759,12 @@ public class Game : MonoBehaviour
         Dispose();
         globalCalibrator?.Dispose();
 
+        if (GameEmbedMode.IsBridgeEmbedded)
+        {
+            Context.EmitExternalGameResult();
+            return;
+        }
+
         var sceneLoader = new SceneLoader("Navigation");
         sceneLoader.Load();
 
@@ -767,6 +783,17 @@ public class Game : MonoBehaviour
         ObjectPool.Dispose();
 
         onGameDisposed.Invoke(this);
+        if (!preserveContentProviderOnDispose)
+        {
+            contentProvider?.Dispose();
+            if (ReferenceEquals(Context.GameContentProvider, contentProvider))
+            {
+                Context.GameContentProvider = null;
+            }
+        }
+        contentProvider = null;
+        preserveContentProviderOnDispose = false;
+        TierPlaySession = null;
     }
 }
 

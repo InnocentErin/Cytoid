@@ -3,8 +3,18 @@ using UnityEngine;
 
 public class BadgeNotification : MonoBehaviour, ScreenBecameActiveListener
 {
-    [GetComponent] public CanvasGroup canvasGroup;
-    
+    public CanvasGroup canvasGroup;
+
+    private void OnValidate()
+    {
+        this.AutoFill(ref canvasGroup);
+    }
+
+    private void Awake()
+    {
+        this.AutoFill(ref canvasGroup);
+    }
+
     public void OnScreenBecameActive()
     {
         canvasGroup.alpha = 0;

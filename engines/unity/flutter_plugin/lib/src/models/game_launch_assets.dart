@@ -1,33 +1,58 @@
 /// File URI references for level assets passed to the game core.
 class GameLaunchAssets {
   const GameLaunchAssets({
-    this.vfsUri,
-    this.chartUri,
-    this.musicUri,
-    this.storyboardUri,
+    required this.vfsUri,
+    required this.chartPath,
+    required this.musicPath,
+    this.storyboardPath,
   });
 
   /// Directory containing level files (charts, storyboard images, etc.).
-  final String? vfsUri;
-  final String? chartUri;
-  final String? musicUri;
-  final String? storyboardUri;
+  final String vfsUri;
+  final String chartPath;
+  final String musicPath;
+  final String? storyboardPath;
 
   factory GameLaunchAssets.fromJson(Map<String, dynamic> json) {
+    final vfsUri = _readRequiredString(json, 'vfsUri');
+    final chartPath = _readRequiredString(json, 'chartPath');
+    final musicPath = _readRequiredString(json, 'musicPath');
+    final storyboardPath = _readOptionalString(json, 'storyboardPath');
+
     return GameLaunchAssets(
-      vfsUri: json['vfsUri'] as String?,
-      chartUri: json['chartUri'] as String?,
-      musicUri: json['musicUri'] as String?,
-      storyboardUri: json['storyboardUri'] as String?,
+      vfsUri: vfsUri,
+      chartPath: chartPath,
+      musicPath: musicPath,
+      storyboardPath: storyboardPath,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      if (vfsUri != null) 'vfsUri': vfsUri,
-      if (chartUri != null) 'chartUri': chartUri,
-      if (musicUri != null) 'musicUri': musicUri,
-      if (storyboardUri != null) 'storyboardUri': storyboardUri,
+      'vfsUri': vfsUri,
+      'chartPath': chartPath,
+      'musicPath': musicPath,
+      if (storyboardPath != null) 'storyboardPath': storyboardPath,
     };
+  }
+
+  static String _readRequiredString(Map<String, dynamic> json, String field) {
+    final value = json[field];
+    if (value is String) {
+      return value;
+    }
+    throw FormatException(
+      'GameLaunchAssets.fromJson: missing or invalid field $field',
+    );
+  }
+
+  static String? _readOptionalString(Map<String, dynamic> json, String field) {
+    final value = json[field];
+    if (value == null || value is String) {
+      return value as String?;
+    }
+    throw FormatException(
+      'GameLaunchAssets.fromJson: missing or invalid field $field',
+    );
   }
 }

@@ -6,11 +6,9 @@ namespace Cytoid.Storyboard.PostProcess
 {
     internal static class StoryboardVendorEffectsLoader
     {
-        const string BootstrapTypeName = "Cytoid.Storyboard.Vendor.VendorStoryboardEffectsBootstrap";
-
         public static bool TryRegister(StoryboardRendererProvider provider)
         {
-            var type = Type.GetType(BootstrapTypeName);
+            var type = VendorStoryboardInstall.ResolveBootstrapType();
             if (type == null)
                 return false;
 

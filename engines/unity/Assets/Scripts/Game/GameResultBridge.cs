@@ -10,7 +10,11 @@ public static class GameResultBridge
 
     public static void Emit(GameState state, TierPlaySession tierPlaySession = null, string error = null)
     {
-        var payload = GameResultPayload.FromGameState(state, tierPlaySession, error);
+        var payload = GameResultPayload.FromGameState(
+            state,
+            tierPlaySession,
+            error,
+            GamePlayEventRecorder.Snapshot());
         LastResultJson = payload.ToJson();
         Debug.Log($"[GameResultBridge] {LastResultJson}");
         OnResultJson.Invoke(LastResultJson);
@@ -25,7 +29,8 @@ public static class GameResultBridge
             usedAutoMod = false,
             gameMode = GameMode.Tier.ToString(),
             tierRetry = tierPlaySession?.TierId,
-            timestamp = DateTimeOffset.UtcNow.ToString("o")
+            timestamp = DateTimeOffset.UtcNow.ToString("o"),
+            playEvents = GamePlayEventRecorder.Snapshot()
         };
         LastResultJson = payload.ToJson();
         Debug.Log($"[GameResultBridge] {LastResultJson}");
@@ -39,7 +44,8 @@ public static class GameResultBridge
             timestamp = DateTimeOffset.UtcNow.ToString("o"),
             completed = false,
             failed = true,
-            error = exception.ToString()
+            error = exception.ToString(),
+            playEvents = GamePlayEventRecorder.Snapshot()
         };
         LastResultJson = payload.ToJson();
         Debug.LogError($"[GameResultBridge] {LastResultJson}");

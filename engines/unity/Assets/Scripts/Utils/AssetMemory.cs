@@ -115,7 +115,21 @@ public class AssetMemory
 
         if (PrintDebugMessages) Debug.Log($"AssetMemory: Started loading {path} with variant {suffix}.");
         isLoading.Add(path);
+        try
+        {
+            return await LoadAssetCore<T>(path, tag, cancellationToken, options, useFileCacheOnly, variantPath, variantExists);
+        }
+        finally
+        {
+            isLoading.Remove(path);
+        }
+    }
 
+    private async UniTask<T> LoadAssetCore<T>(
+        string path, AssetTag tag, CancellationToken cancellationToken,
+        AssetOptions options, bool useFileCacheOnly, string variantPath, bool variantExists)
+        where T : Object
+    {
         var time = DateTimeOffset.Now.ToUnixTimeMilliseconds();
         var loadPath = path;
         
@@ -136,7 +150,6 @@ public class AssetMemory
                         await request.SendWebRequest();
                         if (cancellationToken != default && cancellationToken.IsCancellationRequested)
                         {
-                            isLoading.Remove(path);
                             return default;
                         }
 
@@ -156,7 +169,6 @@ public class AssetMemory
                                     Debug.LogError(request.error);
                                 }
                             }
-                            isLoading.Remove(path);
                             return default;
                         }
                        
@@ -165,7 +177,6 @@ public class AssetMemory
                 }
                 else
                 {
-                    isLoading.Remove(path);
                     return default;
                 }
             }
@@ -187,7 +198,6 @@ public class AssetMemory
 
                 if (cancellationToken != default && cancellationToken.IsCancellationRequested)
                 {
-                    isLoading.Remove(path);
                     return default;
                 }
 
@@ -199,7 +209,6 @@ public class AssetMemory
                         Debug.LogError(
                             $"AssetMemory: Failed to load {loadPath}");
                         Debug.LogError(request.error);
-                        isLoading.Remove(path);
                         return default;
                     }
                 }
@@ -207,7 +216,6 @@ public class AssetMemory
                 var bytes = request.downloadHandler.data;
                 if (bytes == null)
                 {
-                    isLoading.Remove(path);
                     return default;
                 }
 
@@ -271,14 +279,12 @@ public class AssetMemory
             
             if (cancellationToken != default && cancellationToken.IsCancellationRequested)
             {
-                isLoading.Remove(path);
                 loader.Unload();
                 return default;
             }
             
             if (loader.Error != null)
             {
-                isLoading.Remove(path);
                 Debug.LogError($"AssetMemory: Failed to download audio from {variantPath}");
                 Debug.LogError(loader.Error);
                 return default;
@@ -294,7 +300,6 @@ public class AssetMemory
         time = DateTimeOffset.Now.ToUnixTimeMilliseconds() - time;
         if (PrintDebugMessages) Debug.Log($"AssetMemory: Loaded {variantPath} in {time}ms");
 
-        isLoading.Remove(path);
         return asset;
     }
 
@@ -346,6 +351,7 @@ public class AssetMemory
         }
         memoryCache.Clear();
         taggedMemoryCache.Clear();
+        isLoading.Clear();
     }
 
     private void CheckIfExceedTagLimit(AssetTag tag)

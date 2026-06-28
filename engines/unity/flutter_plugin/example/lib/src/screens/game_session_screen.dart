@@ -6,7 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../game_routes.dart';
+import '../widgets/mock_engine_badge.dart';
 
+/// Handoff screen that orchestrates a single gameplay session.
+///
+/// Flutter owns the handoff UI; v2 gameplay orchestration is delegated to
+/// [PlaySession.run].
 class GameSessionScreen extends StatefulWidget {
   const GameSessionScreen({super.key, required this.args});
 
@@ -19,23 +24,24 @@ class GameSessionScreen extends StatefulWidget {
 class _GameSessionScreenState extends State<GameSessionScreen> {
   String _status = 'Preparing';
   bool _leaving = false;
-  bool _surfaceVisible = false;
 
   CytoidGameCoreClient get _client => widget.args.client;
+  late final PlaySession _playSession = PlaySession(_client);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_runGame());
+      unawaited(_startSession());
     });
   }
 
-  Future<void> _runGame() async {
-    GameResultPayload? result;
+  Future<void> _startSession() async {
+    SessionLaunchPayload? payload;
+    SessionResultPayload? result;
 
     try {
-      final payload = await widget.args.level.createLaunchPayload(
+      payload = await widget.args.level.createLaunchPayload(
         difficulty: widget.args.difficulty,
         settings: widget.args.settings,
         mods: widget.args.mods,
@@ -49,47 +55,18 @@ class _GameSessionScreenState extends State<GameSessionScreen> {
         await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       }
 
-      await _client.ensureRuntimeStarted();
-
-      if (!mounted) return;
-      setState(() => _status = 'Opening surface');
-
-      debugPrint('[CYTOID-DBG] calling showGameSurface');
-      await _client.showGameSurface();
-      _surfaceVisible = true;
-      debugPrint('[CYTOID-DBG] showGameSurface returned, awaiting host ready');
-      await _awaitHostReady();
-      unawaited(
-        _client
-            .updateSettings(widget.args.settings.toLaunchSettings())
-            .catchError((_) {}),
-      );
-
       if (!mounted) return;
       setState(() => _status = 'Loading chart');
 
-      debugPrint('[CYTOID-DBG] calling startPlay');
-      result = await _client.startPlay(payload);
-      debugPrint('[CYTOID-DBG] startPlay returned: failed=${result.failed} completed=${result.completed}');
-      widget.args.onCalibrationResult?.call(result);
-      await _hideSurface();
-    } on CytoidGameCorePlayRouteEndedException {
-      await _hideSurface();
-      await _restorePresentation();
-      if (mounted && !_leaving) {
-        _leaving = true;
-        Navigator.of(context).pop();
-      }
-      return;
-    } on Object catch (error) {
-      result = GameResultPayload(
-        completed: false,
-        failed: true,
-        usedAutoMod: false,
-        error: error.toString(),
-        timestamp: DateTime.now().toIso8601String(),
+      result = await _playSession.run(
+        launch: payload,
+        readyTimeout: const Duration(seconds: 20),
       );
-      await _hideSurface();
+      if (_isCalibrationResult(result)) {
+        widget.args.onCalibrationResult?.call(result);
+      }
+    } on Object catch (error) {
+      result = _errorResult(error, payload);
     } finally {
       await _restorePresentation();
     }
@@ -101,7 +78,7 @@ class _GameSessionScreenState extends State<GameSessionScreen> {
       return;
     }
 
-    if (result.tierRetry != null) {
+    if (result.outcome.kind == OutcomePayload.tierRetryKind) {
       _leaving = true;
       Navigator.of(context).pop(result);
       return;
@@ -119,76 +96,50 @@ class _GameSessionScreenState extends State<GameSessionScreen> {
     );
   }
 
-  bool _isCalibrationResult(GameResultPayload? result) {
-    final gameMode = result?.gameMode?.toLowerCase();
-    return gameMode == 'calibration' || gameMode == 'globalcalibration';
+  bool _isCalibrationResult(SessionResultPayload result) {
+    return result.outcome.kind == OutcomePayload.calibrationKind;
   }
 
   Future<void> _cancelAndPop() async {
     if (_leaving) return;
     _leaving = true;
     setState(() => _status = 'Closing');
-    await _client.endPlayRoute().catchError((_) {});
-    await _hideSurface();
+    try {
+      await _playSession.cancel(reason: 'userBack');
+    } on StateError {
+      // No active session id exists yet; the route can still close.
+    } catch (error) {
+      debugPrint('[GameSession] session.cancel failed: $error');
+    }
     await _restorePresentation();
     if (mounted) {
       Navigator.of(context).pop();
     }
   }
 
-  Future<void> _awaitHostReady() async {
-    debugPrint('[CYTOID-DBG] _awaitHostReady enter');
-    final readyCompleter = Completer<void>();
-    late StreamSubscription<CytoidGameCoreEnvelope> readySubscription;
-    readySubscription = _client.readyEvents.listen((_) {
-      if (!readyCompleter.isCompleted) {
-        debugPrint('[CYTOID-DBG] _awaitHostReady: game.ready event received');
-        readyCompleter.complete();
-      }
-    });
-
-    try {
-      final deadline = DateTime.now().add(const Duration(seconds: 20));
-      while (!readyCompleter.isCompleted) {
-        final status = await _client.queryStatus();
-        if (status.state == GameRuntimeStatus.ready) {
-          debugPrint('[CYTOID-DBG] _awaitHostReady: status=ready, returning');
-          return;
-        }
-        unawaited(_pingReady());
-        final remaining = deadline.difference(DateTime.now());
-        if (remaining <= Duration.zero) {
-          debugPrint('[CYTOID-DBG] _awaitHostReady: DEADLINE HIT — returning without ready!');
-          return;
-        }
-        await Future.any<void>([
-          readyCompleter.future,
-          Future<void>.delayed(
-            remaining < const Duration(milliseconds: 500)
-                ? remaining
-                : const Duration(milliseconds: 500),
-          ),
-        ]);
-      }
-    } finally {
-      await readySubscription.cancel();
-    }
-  }
-
-  Future<void> _pingReady() async {
-    try {
-      await _client.ping(text: 'ready?');
-    } catch (_) {}
-  }
-
-  Future<void> _hideSurface() async {
-    if (!_surfaceVisible) return;
-    _surfaceVisible = false;
-    await _client.hideGameSurface().catchError((_) {});
-  }
-
   Future<void> _restorePresentation() async {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  SessionResultPayload _errorResult(
+    Object error,
+    SessionLaunchPayload? payload,
+  ) {
+    return SessionResultPayload(
+      sessionId: 'example-error-${DateTime.now().microsecondsSinceEpoch}',
+      mode: payload?.mode.wireName ?? SessionMode.ranked.wireName,
+      mods: payload?.mods.map((mod) => mod.v2WireName).toList(growable: false) ??
+          const [],
+      outcome: const OutcomePayload.rejected(),
+      flags: const FlagsPayload(usedAutoMod: false),
+      telemetry: const ResultTelemetryPayload(
+        available: false,
+        eventsRecorded: 0,
+        bytes: 0,
+      ),
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      error: GameCoreError(code: 'example_session_error', message: '$error'),
+    );
   }
 
   @override
@@ -214,6 +165,14 @@ class _GameSessionScreenState extends State<GameSessionScreen> {
                 duration: const Duration(milliseconds: 160),
                 child: _HandoffStatus(key: ValueKey(_status), status: _status),
               ),
+            ),
+            // Debug-only mock-engine indicator. Hidden in release builds and
+            // whenever the real Unity runtime is mounted. See MockEngineBadge.
+            Positioned(
+              top: 18,
+              left: 0,
+              right: 0,
+              child: Center(child: MockEngineBadge(client: _client)),
             ),
           ],
         ),

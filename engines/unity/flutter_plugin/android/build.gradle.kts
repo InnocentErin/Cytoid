@@ -36,20 +36,16 @@ val unityAars =
     } else {
         files()
     }
-val unityArtifactAvailable = unityCoreAar.exists()
 
 android {
     namespace = "org.cytoid.gamecore"
     compileSdk = 36
 
     defaultConfig {
-        minSdk = if (unityArtifactAvailable) 24 else 21
+        // Unity 6 (6000.0.x) requires API 24+; the runtime probe in
+        // CytoidGameCoreBridge fails fast if the AAR is missing.
+        minSdk = 24
         consumerProguardFiles("consumer-rules.pro")
-        buildConfigField("boolean", "UNITY_ARTIFACT_AVAILABLE", unityArtifactAvailable.toString())
-    }
-
-    buildFeatures {
-        buildConfig = true
     }
 
     compileOptions {
@@ -61,11 +57,20 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
     }
 
     packaging {
         jniLibs {
-            if (unityArtifactAvailable) {
+            if (unityCoreAar.exists()) {
                 useLegacyPackaging = true
             }
             pickFirsts += listOf("**/libunity.so", "**/libil2cpp.so", "**/libmain.so")
@@ -80,11 +85,18 @@ kotlin {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("io.mockk:mockk:1.13.10")
+    // Real org.json for JVM unit tests. android.jar ships stubbed org.json
+    // classes that return null from put()/toString() under
+    // isReturnDefaultValues=true, which breaks JSON-building assertions.
+    testImplementation("org.json:json:20240303")
 }
 
 rootProject.subprojects {
     plugins.withId("com.android.application") {
-        if (unityArtifactAvailable) {
+        if (unityCoreAar.exists()) {
             dependencies.add("implementation", unityAars)
         }
     }

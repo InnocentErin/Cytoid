@@ -58,9 +58,25 @@ Dart models in `engines/unity/flutter_plugin/lib/src/models/` mirror C#:
 - `engines/unity/Assets/Scripts/Game/GameResultPayload.cs`
 - `engines/unity/Assets/Scripts/Game/GameLaunchBridge.cs` / `GameResultBridge.cs`
 
-Protocol spec: `engines/unity/flutter_plugin/example/docs/host-protocol.md` (shared with `cytoid_flutter/docs/host-protocol.md`).
+Protocol spec: `docs/host-protocol-v2.md` (v1 doc at `engines/unity/flutter_plugin/example/docs/host-protocol.md` is DEPRECATED; keep `cytoid_flutter/docs/host-protocol.md` in sync).
 
 **JNI / native callback (Android):** Unity C# → `NativeHostMessenger` → `org.cytoid.gamecore.UnityHostCallback.onMessage` (implemented in `engines/unity/flutter_plugin/android/`). Not the legacy `com.example.cytoid_flutter.host.UnityHostCallback` string in older README text.
+
+**Native send failures (Android `sendToUnity` / `returnToFlutterActivity`):** when the reflective `UnitySendMessage` call or the `startActivity` back to the Flutter Activity throws, the failure is NOT surfaced as a synchronous `PlatformException` from `send()`. `send()` returns `Future<void>` and callers have no wait point to convert the exception. Instead, the bridge routes the failure asynchronously via the v2 § Active-Session Runtime Failure contract:
+
+- `activeSessionId == null` → `engine.error` envelope via the EventChannel, `error.code = "runtime_exception"`, message sanitized to `"<ExceptionClassSimpleName>: <first message line>"` (no raw stack trace).
+- `activeSessionId != null` → synthesized `session.failed` with `error.code = "runtime_unreachable"` via the T4 primitive. Never both — active-session failures use `session.failed` ONLY; `engine.error` is for non-session failures.
+
+**Android Unity Activity lifecycle (warm-resident):** the exclusive Unity Activity (`me.tigerhix.cytoid.CytoidPluginActivity`) is NOT `finish()`-ed on session end. `hideGameSurface()` brings the Flutter Activity to front via `FLAG_ACTIVITY_REORDER_TO_FRONT | FLAG_ACTIVITY_SINGLE_TOP` and leaves the Unity Activity warm-resident in the back stack. This keeps Unity/IL2CPP/GL state alive across the typical play loop (select level → play → result → select next), eliminating the 5–15s cold-start tax on every session.
+
+Activity lifecycle callbacks drive the T3 state machine:
+- `onActivityPaused` (Unity Activity) → `runtimeState.onSuspend()` (READY|BUSY → SUSPENDED; single-slot prior state preserved).
+- `onActivityResumed` → `runtimeState.onResume()` (SUSPENDED → prior state).
+- `onActivityDestroyed` → if `activeSessionId != null`, T4's `synthesizeRuntimeFailure(SURFACE_LOST, sessionId)` fires (emits `session.failed` with `error.code = "runtime_surface_lost"`, transitions to FAILED); otherwise `runtimeState.reset()` returns to UNAVAILABLE (caller must `startRuntime()` again).
+
+A `@VisibleForTesting unityActivityInstanceCount` counter tracks live Unity Activity instances. In the warm-resident policy this counter MUST stay at 0 or 1 across arbitrary session cycles; a value > 1 indicates Activity accumulation (memory leak). The memory regression test runs 10 sequential session cycles via low-level primitives and asserts the counter never exceeds 1.
+
+The Unity Activity source lives in the AAR and is NOT editable from this repo. Lifecycle integration is exclusively via `Application.ActivityLifecycleCallbacks` registered in `CytoidGameCoreBridge.attachActivity`.
 
 ---
 
@@ -131,6 +147,8 @@ flutter run
 
 ### iOS Bridge-embedded
 
+> **iOS Simulator runs mock-only because the current Unity artifact is device-only. Real-device testing is required for Unity verification.**
+
 - Batch or **Cytoid → Build iOS Plugin Artifacts**: `CytoidCoreBuild.ExportIOSLibraryForFlutter`
   exports to `engines/unity/flutter_plugin/.cytoid_game_core/exports/ios/UnityLibrary`, then runs
   `engines/unity/flutter_plugin/tool/build_unity_ios_framework.sh` (requires macOS + Xcode) to write
@@ -178,7 +196,7 @@ If you change envelope types or payloads:
 
 1. Update C# (`engines/unity/Assets/Scripts/Host/`, `GameLaunchPayload`, `GameResultBridge`, …).
 2. Update Dart models in `engines/unity/flutter_plugin/lib/`.
-3. Update `engines/unity/flutter_plugin/example/docs/host-protocol.md` and keep `cytoid_flutter/docs/host-protocol.md` in sync if the contract changed.
+3. Update `docs/host-protocol-v2.md` and keep `cytoid_flutter/docs/host-protocol.md` in sync if the contract changed.
 
 ### Testing on device
 
@@ -212,7 +230,6 @@ Append new rows when architecture or default paths change.
 
 | Topic | Location |
 |-------|----------|
-| External dependencies inventory | `DEPENDENCIES.md` |
 | Build menu / batchmode | `engines/unity/Assets/Scripts/Editor/CytoidCoreBuild.cs` |
 | CI plugin artifacts | `.github/workflows/flutter-plugin-artifacts.yml` |
 | Vendor asset install | `engines/unity/flutter_plugin/tool/install_vendor_from_archive.sh`, `docs/vendor.md` |
@@ -224,5 +241,5 @@ Append new rows when architecture or default paths change.
 | Flutter plugin (Kotlin) | `engines/unity/flutter_plugin/android/src/main/kotlin/org/cytoid/gamecore/` |
 | Flutter plugin (iOS Swift / SPM) | `engines/unity/flutter_plugin/ios/cytoid_game_core/` |
 | Flutter Dart API | `engines/unity/flutter_plugin/lib/src/cytoid_game_core_client.dart` |
-| Protocol doc | `engines/unity/flutter_plugin/example/docs/host-protocol.md` |
+| Protocol doc | `docs/host-protocol-v2.md` (v1 doc at engines/unity/flutter_plugin/example/docs/host-protocol.md is DEPRECATED) |
 | Legacy architecture notes | `engines/unity/flutter_plugin/example/docs/old-architecture/` |

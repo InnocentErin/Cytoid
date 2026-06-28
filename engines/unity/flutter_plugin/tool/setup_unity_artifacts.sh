@@ -74,7 +74,7 @@ download_first_available \
   "$BASE_URL/$VERSION/cytoid-unity-core.aar" \
   "$BASE_URL/$VERSION/android/cytoid-unity-core.aar"
 
-for aar in NativeAudio.aar IngameDebugConsole.aar lunar-console.aar CytoidPlugin.aar; do
+for aar in NativeAudio.aar IngameDebugConsole.aar CytoidPlugin.aar; do
   if curl -fIL "$BASE_URL/$VERSION/$aar" >/dev/null 2>&1; then
     download "$BASE_URL/$VERSION/$aar" "$ARTIFACT_ROOT/android/$aar"
   elif curl -fIL "$BASE_URL/$VERSION/android/$aar" >/dev/null 2>&1; then
@@ -91,6 +91,16 @@ unzip -q "$TMP_DIR/UnityFramework.xcframework.zip" -d "$ARTIFACT_ROOT/ios"
 
 verify_checksum "$ARTIFACT_ROOT/android/cytoid-unity-core.aar"
 printf '%s\n' "$VERSION" > "$VERSION_FILE"
+
+# Write typed manifests alongside the legacy VERSION file. Both android and
+# ios manifests are emitted because setup_unity_artifacts.sh installs both
+# platform artifacts in one pass.
+MANIFEST_PLATFORM=android \
+MANIFEST_VERSION="$VERSION" \
+  bash "$ROOT_DIR/tool/write_manifest.sh"
+MANIFEST_PLATFORM=ios \
+MANIFEST_VERSION="$VERSION" \
+  bash "$ROOT_DIR/tool/write_manifest.sh"
 
 echo "Cytoid game core Unity artifacts installed:"
 echo "  Android: $ARTIFACT_ROOT/android"

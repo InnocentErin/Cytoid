@@ -1,3 +1,18 @@
 .DS_Store
 *.log*
 *.env*
+
+# Local Unity files
+engines/unity/.vsconfig
+engines/unity/UpgradeLog.htm
+
+# Local PowerShell helper scripts (Unix equivalents are tracked)
+engines/unity/flutter_plugin/tool/*.ps1
+tools/vendor/*.ps1
+
+# Flutter generated plugin registrants
+engines/unity/flutter_plugin/example/linux/flutter/generated_plugin_registrant.*
+engines/unity/flutter_plugin/example/linux/flutter/generated_plugins.cmake
+engines/unity/flutter_plugin/example/macos/Flutter/GeneratedPluginRegistrant.swift
+engines/unity/flutter_plugin/example/windows/flutter/generated_plugin_registrant.*
+engines/unity/flutter_plugin/example/windows/flutter/generated_plugins.cmake

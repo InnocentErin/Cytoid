@@ -6,6 +6,10 @@
 engines/unity/.vsconfig
 engines/unity/UpgradeLog.htm
 
+# Cytoid Player local builds
+engines/unity/Builds/CytoidPlayer/
+engines/unity/Builds/CytoidPlayer.zip
+
 # Local PowerShell helper scripts (Unix equivalents are tracked)
 engines/unity/flutter_plugin/tool/*.ps1
 tools/vendor/*.ps1

@@ -66,6 +66,7 @@ public class DragChildNote : Note
     
     public override void PlayHitSound()
     {
+        if (Context.Player.Settings.HitSound == "none") return;
         if (Context.AudioManager.IsLoaded("HitSound"))
         {
             Context.AudioManager.Get("HitSound").Play();

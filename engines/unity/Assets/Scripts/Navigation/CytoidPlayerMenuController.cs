@@ -1,0 +1,654 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using Cysharp.Threading.Tasks;
+using Newtonsoft.Json;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+
+public class CytoidPlayerMenuController : MonoBehaviour
+{
+    public const float UiSpacing = 12f;
+    public const float ButtonHeight = 48f;
+    public const float LevelButtonHeight = 40f;
+
+    private Font uiFont;
+    private Canvas canvas;
+    private Transform root;
+    private Text statusText;
+    private Transform levelListRoot;
+    private readonly List<Button> difficultyButtons = new List<Button>();
+    private bool isRefreshingLevelList;
+
+    private Level selectedLevel;
+    private Difficulty selectedDifficulty;
+    private string pendingSelectLevelId;
+    private readonly Dictionary<Level, Transform> levelRowMap = new Dictionary<Level, Transform>();
+
+    private void Awake()
+    {
+        if (GameEmbedMode.IsBridgeEmbedded)
+        {
+            enabled = false;
+            return;
+        }
+
+        uiFont = Resources.Load<Font>("Fonts/Nunito-Regular");
+        if (uiFont == null)
+        {
+            Debug.LogWarning("[CytoidPlayer] Nunito-Regular font not found; falling back to default font.");
+            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+
+        try
+        {
+            BuildUi();
+            Debug.Log("[CytoidPlayer] Menu UI built successfully.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[CytoidPlayer] Failed to build menu UI: {e}");
+        }
+    }
+
+    private async void Start()
+    {
+        if (GameEmbedMode.IsBridgeEmbedded) return;
+
+        SetStatus("Initializing...");
+        await UniTask.WaitUntil(() => Context.IsInitialized);
+        ShowGameErrorIfAny();
+        await RefreshLevelList();
+        ProcessCommandLineImport();
+    }
+
+    private void OnEnable()
+    {
+        if (GameEmbedMode.IsBridgeEmbedded) return;
+        if (!Context.IsInitialized) return;
+        RefreshLevelList().Forget();
+    }
+
+    private void BuildUi()
+    {
+        var go = new GameObject("CytoidPlayerMenu");
+        canvas = go.AddComponent<Canvas>();
+        if (canvas == null) throw new InvalidOperationException("Failed to add Canvas component.");
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 100;
+        var scaler = go.AddComponent<CanvasScaler>();
+        if (scaler == null) throw new InvalidOperationException("Failed to add CanvasScaler component.");
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight = 0.5f;
+        if (go.AddComponent<GraphicRaycaster>() == null) throw new InvalidOperationException("Failed to add GraphicRaycaster component.");
+
+        if (FindObjectOfType<EventSystem>() == null)
+        {
+            var eventSystem = new GameObject("EventSystem");
+            eventSystem.AddComponent<EventSystem>();
+            eventSystem.AddComponent<StandaloneInputModule>();
+        }
+
+        // Full-screen background so the menu is visible even if layout has issues.
+        var bgGo = CreateUiObject("Background", canvas.transform);
+        var bgRect = bgGo.GetComponent<RectTransform>();
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.offsetMin = Vector2.zero;
+        bgRect.offsetMax = Vector2.zero;
+        var bgImage = bgGo.AddComponent<Image>();
+        bgImage.color = new Color(0.05f, 0.05f, 0.08f, 1f);
+
+        root = CreateUiObject("Root", canvas.transform).transform;
+        var rootRect = root.GetComponent<RectTransform>();
+        rootRect.anchorMin = Vector2.zero;
+        rootRect.anchorMax = Vector2.one;
+        rootRect.offsetMin = new Vector2(120, 40);
+        rootRect.offsetMax = new Vector2(-120, -40);
+
+        var vlg = root.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = UiSpacing;
+        vlg.childAlignment = TextAnchor.UpperCenter;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = false;
+        vlg.childForceExpandHeight = false;
+
+        var title = CreateText(root, "Cytoid Player", 32, TextAnchor.MiddleCenter);
+        title.GetComponent<LayoutElement>().preferredHeight = 60;
+
+        var hintText = CreateText(root, "Select a level below or use Import to load a .cytoidlevel file.\nF11 = fullscreen, ESC = back/exit fullscreen.", 18,
+            TextAnchor.MiddleCenter);
+        hintText.GetComponent<LayoutElement>().preferredHeight = 48;
+
+        var importButton = CreateButton(root, "Import .cytoidlevel file", () => ImportLevelFile().Forget());
+        importButton.GetComponent<LayoutElement>().preferredHeight = ButtonHeight;
+
+        statusText = CreateText(root, "", 16, TextAnchor.MiddleLeft);
+        statusText.color = new Color(1, 0.8f, 0.4f);
+        statusText.GetComponent<LayoutElement>().preferredHeight = 28;
+
+        var listTitle = CreateText(root, "Installed Levels", 20, TextAnchor.MiddleLeft);
+        listTitle.GetComponent<LayoutElement>().preferredHeight = 32;
+
+        var scroll = CreateUiObject("LevelScroll", root);
+        var scrollLe = scroll.AddComponent<LayoutElement>();
+        scrollLe.preferredHeight = 240;
+        scrollLe.minHeight = 120;
+        scrollLe.flexibleHeight = 1;
+        scrollLe.flexibleWidth = 1;
+        scrollLe.minWidth = 400;
+        var scrollComp = scroll.AddComponent<ScrollRect>();
+
+        var viewport = CreateUiObject("Viewport", scroll.transform);
+        var vpRect = viewport.GetComponent<RectTransform>();
+        vpRect.anchorMin = Vector2.zero;
+        vpRect.anchorMax = new Vector2(1, 1);
+        vpRect.offsetMax = new Vector2(-20, 0);
+        viewport.AddComponent<Mask>().showMaskGraphic = false;
+        viewport.AddComponent<Image>().color = new Color(0, 0, 0, 0.2f);
+
+        levelListRoot = CreateUiObject("LevelList", viewport.transform).transform;
+        var listRect = levelListRoot.GetComponent<RectTransform>();
+        listRect.anchorMin = Vector2.zero;
+        listRect.anchorMax = Vector2.one;
+        listRect.sizeDelta = Vector2.zero;
+        var listVlg = levelListRoot.gameObject.AddComponent<VerticalLayoutGroup>();
+        listVlg.spacing = 4;
+        listVlg.childControlHeight = true;
+        listVlg.childForceExpandWidth = true;
+        listVlg.childForceExpandHeight = false;
+        levelListRoot.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var scrollbar = CreateUiObject("Scrollbar", scroll.transform);
+        var sbRect = scrollbar.GetComponent<RectTransform>();
+        sbRect.anchorMin = new Vector2(1, 0);
+        sbRect.anchorMax = Vector2.one;
+        sbRect.pivot = new Vector2(1, 0.5f);
+        sbRect.sizeDelta = new Vector2(20, 0);
+        var sb = scrollbar.AddComponent<Scrollbar>();
+        sb.direction = Scrollbar.Direction.BottomToTop;
+        var sbBg = scrollbar.AddComponent<Image>();
+        sbBg.color = new Color(0.1f, 0.1f, 0.1f, 0.5f);
+        var sbHandle = CreateUiObject("Handle", scrollbar.transform);
+        var sbHandleRect = sbHandle.GetComponent<RectTransform>();
+        sbHandleRect.sizeDelta = new Vector2(20, 20);
+        var sbHandleImage = sbHandle.AddComponent<Image>();
+        sbHandleImage.color = new Color(0.3f, 0.6f, 1f);
+        sb.targetGraphic = sbHandleImage;
+        sb.handleRect = sbHandleRect;
+
+        scrollComp.content = listRect;
+        scrollComp.viewport = vpRect;
+        scrollComp.verticalScrollbar = sb;
+        scrollComp.vertical = true;
+        scrollComp.horizontal = false;
+
+        var diffTitle = CreateText(root, "Difficulty", 20, TextAnchor.MiddleLeft);
+        diffTitle.GetComponent<LayoutElement>().preferredHeight = 32;
+
+        var diffRoot = CreateUiObject("DifficultyRoot", root).transform;
+        var diffHlg = diffRoot.gameObject.AddComponent<HorizontalLayoutGroup>();
+        diffHlg.spacing = UiSpacing;
+        diffHlg.childControlWidth = true;
+        diffHlg.childForceExpandWidth = true;
+        diffHlg.childControlHeight = true;
+        diffHlg.childForceExpandHeight = false;
+
+        foreach (var diff in new[] {Difficulty.Easy, Difficulty.Hard, Difficulty.Extreme})
+        {
+            var diffButton = CreateButton(diffRoot, diff.Id, () => SelectDifficulty(diff));
+            diffButton.GetComponent<LayoutElement>().preferredHeight = ButtonHeight;
+            difficultyButtons.Add(diffButton);
+        }
+
+        var startButton = CreateButton(root, "Start Game", () => StartGame());
+        startButton.GetComponent<LayoutElement>().preferredHeight = ButtonHeight;
+        var startColors = startButton.colors;
+        startColors.normalColor = new Color(0.2f, 0.8f, 0.3f);
+        startButton.colors = startColors;
+
+        SelectDifficulty(Difficulty.Hard);
+    }
+
+    private static GameObject CreateUiObject(string name, Transform parent)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        return go;
+    }
+
+    private Text CreateText(Transform parent, string content, int fontSize, TextAnchor anchor)
+    {
+        var go = CreateUiObject("Text", parent);
+        var text = go.AddComponent<Text>();
+        text.font = uiFont;
+        text.text = content;
+        text.fontSize = fontSize;
+        text.alignment = anchor;
+        text.color = Color.white;
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Truncate;
+        var le = go.AddComponent<LayoutElement>();
+        le.preferredHeight = fontSize + 8;
+        return text;
+    }
+
+    private Button CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
+    {
+        var go = CreateUiObject("Button", parent);
+        var image = go.AddComponent<Image>();
+        if (image == null) throw new InvalidOperationException("Failed to add Image to button.");
+        image.color = new Color(0.25f, 0.35f, 0.55f);
+        image.type = Image.Type.Simple;
+
+        var btn = go.AddComponent<Button>();
+        if (btn == null) throw new InvalidOperationException("Failed to add Button component.");
+        btn.onClick.AddListener(onClick);
+
+        // LayoutElement is required by callers that set preferredHeight/Width.
+        var buttonLe = go.AddComponent<LayoutElement>();
+        buttonLe.preferredWidth = 400;
+
+        var textGo = CreateUiObject("Label", go.transform);
+        var textRect = textGo.GetComponent<RectTransform>();
+        if (textRect == null) throw new InvalidOperationException("Label has no RectTransform.");
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.sizeDelta = Vector2.zero;
+        var text = textGo.AddComponent<Text>();
+        if (text == null) throw new InvalidOperationException("Failed to add Text to label.");
+        text.font = uiFont;
+        text.text = label;
+        text.fontSize = 18;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+
+        return btn;
+    }
+
+    private void SetStatus(string message)
+    {
+        if (statusText != null) statusText.text = message;
+        if (!string.IsNullOrEmpty(message)) Debug.Log($"[CytoidPlayer] {message}");
+    }
+
+    private void ShowGameErrorIfAny()
+    {
+        var error = Context.GameErrorState;
+        if (error == null) return;
+
+        var message = error.Message;
+        if (error.Exception != null)
+        {
+            message += $"\n{error.Exception.GetType().Name}: {error.Exception.Message}";
+        }
+
+        SetStatus($"ERROR: {message}");
+        Context.GameErrorState = null;
+    }
+
+    private void SelectDifficulty(Difficulty difficulty)
+    {
+        selectedDifficulty = difficulty;
+        foreach (var btn in difficultyButtons)
+        {
+            var colors = btn.colors;
+            var label = btn.GetComponentInChildren<Text>().text.ToLowerInvariant();
+            var selected = label == difficulty.Id.ToLowerInvariant();
+            colors.normalColor = selected ? new Color(0.3f, 0.6f, 1f) : new Color(0.25f, 0.35f, 0.55f);
+            btn.colors = colors;
+        }
+    }
+
+    private void SelectLevel(Level level)
+    {
+        selectedLevel = level;
+
+        foreach (var pair in levelRowMap)
+        {
+            var rowImage = pair.Value.GetComponent<Image>();
+            if (rowImage == null) continue;
+            var isSelected = pair.Key.Meta.id == level.Meta.id;
+            rowImage.color = isSelected ? new Color(0.2f, 0.35f, 0.55f, 1f) : new Color(0.12f, 0.12f, 0.16f, 1f);
+        }
+
+        // Pick a sensible default difficulty if current is missing.
+        if (level.Meta.charts.All(c => c.type != selectedDifficulty.Id))
+        {
+            var available = level.Meta.charts.Select(c => c.type).ToList();
+            if (available.Contains(Difficulty.Hard.Id)) SelectDifficulty(Difficulty.Hard);
+            else if (available.Contains(Difficulty.Extreme.Id)) SelectDifficulty(Difficulty.Extreme);
+            else if (available.Contains(Difficulty.Easy.Id)) SelectDifficulty(Difficulty.Easy);
+        }
+
+        SetStatus($"Selected: {GetLevelTitle(level)} [{selectedDifficulty.Id} {level.Meta.GetDifficultyLevel(selectedDifficulty.Id)}]");
+    }
+
+    private void OnDeleteLevelClicked(Level level)
+    {
+        DeleteLevel(level);
+    }
+
+    private async void DeleteLevel(Level level)
+    {
+        SetStatus($"Deleting {GetLevelTitle(level)}...");
+        try
+        {
+            Context.LevelManager.DeleteLocalLevel(level.Meta.id);
+            await Context.LevelManager.LoadLevelsOfType(LevelType.User);
+            await RefreshLevelList();
+            SetStatus($"Deleted {GetLevelTitle(level)}.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+            SetStatus($"Failed to delete: {e.Message}");
+        }
+    }
+
+    private async UniTask RefreshLevelList()
+    {
+        if (levelListRoot == null || isRefreshingLevelList) return;
+        isRefreshingLevelList = true;
+
+        try
+        {
+            ClearLevelListUi();
+
+            try
+            {
+#if UNITY_STANDALONE_WIN
+                // On PC the source .cytoidlevel files are kept wherever the user picked them,
+                // so scanning UserDataPath for packages is not enough. Load already-installed
+                // level folders directly.
+                await Context.LevelManager.LoadLevelsOfType(LevelType.User);
+#else
+                await Context.LevelManager.InstallUserCommunityLevels();
+#endif
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[CytoidPlayer] Failed to refresh levels: {e}");
+            }
+
+            if (Context.LevelManager.LoadedLocalLevels.Count == 0)
+            {
+                var empty = CreateButton(levelListRoot, "No levels installed. Use Import to add a level.", () => { });
+                empty.interactable = false;
+                empty.GetComponent<LayoutElement>().preferredHeight = LevelButtonHeight;
+                SetStatus("No levels installed.");
+                return;
+            }
+
+            foreach (var level in Context.LevelManager.LoadedLocalLevels.Values.OrderBy(l => l.Meta.title ?? l.Meta.id))
+            {
+                CreateLevelListItem(level);
+            }
+
+            SetStatus($"{Context.LevelManager.LoadedLocalLevels.Count} level(s) installed.");
+
+            if (!string.IsNullOrEmpty(pendingSelectLevelId) &&
+                Context.LevelManager.LoadedLocalLevels.TryGetValue(pendingSelectLevelId, out var pendingLevel))
+            {
+                SelectLevel(pendingLevel);
+                pendingSelectLevelId = null;
+            }
+            else if (selectedLevel == null || !Context.LevelManager.LoadedLocalLevels.ContainsKey(selectedLevel.Meta.id))
+            {
+                SelectLevel(Context.LevelManager.LoadedLocalLevels.Values.First());
+            }
+            else
+            {
+                SelectLevel(selectedLevel);
+            }
+        }
+        finally
+        {
+            isRefreshingLevelList = false;
+        }
+    }
+
+    private void ClearLevelListUi()
+    {
+        levelRowMap.Clear();
+        for (var i = levelListRoot.childCount - 1; i >= 0; i--)
+        {
+            Destroy(levelListRoot.GetChild(i).gameObject);
+        }
+    }
+
+    private void CreateLevelListItem(Level level)
+    {
+        var localLevel = level;
+        var row = CreateUiObject("LevelRow", levelListRoot).transform;
+        var rowLe = row.gameObject.AddComponent<LayoutElement>();
+        rowLe.preferredHeight = 72;
+        rowLe.minHeight = 72;
+
+        var rowImage = row.gameObject.AddComponent<Image>();
+        rowImage.color = new Color(0.12f, 0.12f, 0.16f, 1f);
+        rowImage.raycastTarget = false;
+
+        var rowHlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+        rowHlg.spacing = UiSpacing;
+        rowHlg.padding = new RectOffset(8, 8, 4, 4);
+        rowHlg.childAlignment = TextAnchor.MiddleLeft;
+        rowHlg.childControlWidth = true;
+        rowHlg.childControlHeight = true;
+        rowHlg.childForceExpandWidth = false;
+        rowHlg.childForceExpandHeight = true;
+
+        var infoGo = CreateUiObject("Info", row);
+        var infoLe = infoGo.AddComponent<LayoutElement>();
+        infoLe.flexibleWidth = 1;
+        infoLe.minWidth = 200;
+        var infoText = infoGo.AddComponent<Text>();
+        infoText.font = uiFont;
+        infoText.text = $"{GetLevelTitle(level)}\n{GetLevelArtist(level)}\n{GetLevelDifficultyLine(level)}";
+        infoText.fontSize = 14;
+        infoText.alignment = TextAnchor.MiddleLeft;
+        infoText.color = Color.white;
+        infoText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        infoText.verticalOverflow = VerticalWrapMode.Truncate;
+        infoText.resizeTextForBestFit = false;
+        infoText.raycastTarget = false;
+
+        var selectButton = CreateButton(row, "Select", () => SelectLevel(localLevel));
+        selectButton.GetComponent<LayoutElement>().preferredWidth = 80;
+
+        var deleteButton = CreateButton(row, "Delete", () => OnDeleteLevelClicked(localLevel));
+        var deleteLe = deleteButton.GetComponent<LayoutElement>();
+        deleteLe.preferredWidth = 80;
+        var deleteColors = deleteButton.colors;
+        deleteColors.normalColor = new Color(0.6f, 0.2f, 0.2f);
+        deleteColors.highlightedColor = new Color(0.8f, 0.25f, 0.25f);
+        deleteColors.pressedColor = new Color(0.5f, 0.15f, 0.15f);
+        deleteButton.colors = deleteColors;
+
+        levelRowMap[level] = row;
+    }
+
+    private static string GetLevelTitle(Level level)
+    {
+        var title = level.Meta.title ?? level.Meta.id;
+        if (!string.IsNullOrEmpty(level.Meta.title_localized))
+            title += $" ({level.Meta.title_localized})";
+        return title;
+    }
+
+    private static string GetLevelArtist(Level level)
+    {
+        var artist = string.IsNullOrEmpty(level.Meta.artist) ? "Unknown artist" : level.Meta.artist;
+        if (!string.IsNullOrEmpty(level.Meta.charter))
+            artist += $"  ·  Charted by {level.Meta.charter}";
+        return artist;
+    }
+
+    private static string GetLevelDifficultyLine(Level level)
+    {
+        var parts = level.Meta.charts.Select(c =>
+        {
+            var diff = Difficulty.Parse(c.type);
+            return $"{diff.Id} {c.difficulty}";
+        });
+        return string.Join("  ·  ", parts);
+    }
+
+    private void StartGame()
+    {
+        if (selectedLevel == null)
+        {
+            SetStatus("Please select a level first.");
+            return;
+        }
+
+        if (selectedLevel.Meta.charts.All(c => c.type != selectedDifficulty.Id))
+        {
+            SetStatus($"Selected difficulty {selectedDifficulty.Id} is not available.");
+            return;
+        }
+
+        SetStatus("Starting game...");
+        Context.GameErrorState = null;
+        GameLaunchBridge.StartDebugGame(selectedLevel, selectedDifficulty, new List<Mod> {Mod.Auto});
+    }
+
+    private async UniTask ImportLevelFile()
+    {
+        var path = await PickCytoidLevelFile();
+        if (string.IsNullOrEmpty(path))
+        {
+            SetStatus("No file selected.");
+            return;
+        }
+
+        await InstallLevelPackage(path);
+    }
+
+    private async UniTask InstallLevelPackage(string path)
+    {
+        SetStatus($"Installing {Path.GetFileName(path)}...");
+        try
+        {
+            // Keep the source file; the user picked it from their own storage.
+            var installed = await Context.LevelManager.InstallLevels(new List<string> {path}, LevelType.User, deleteSource: false);
+            // Remember the newly imported level so the list can select it after refresh.
+            pendingSelectLevelId = ResolveLevelIdFromInstalledPaths(installed);
+            // Ensure the newly installed level is loaded into LoadedLocalLevels.
+            await Context.LevelManager.LoadLevelsOfType(LevelType.User);
+            await RefreshLevelList();
+            SetStatus($"Installed {Path.GetFileName(path)}.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+            SetStatus($"Failed to install: {e.Message}");
+        }
+    }
+
+    private static string ResolveLevelIdFromInstalledPaths(List<string> installedJsonFiles)
+    {
+        if (installedJsonFiles == null || installedJsonFiles.Count == 0) return null;
+        try
+        {
+            var meta = JsonConvert.DeserializeObject<LevelMeta>(File.ReadAllText(installedJsonFiles[0]));
+            return meta?.id;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[CytoidPlayer] Failed to read installed level meta: {e}");
+            return null;
+        }
+    }
+
+    private async UniTask<string> PickCytoidLevelFile()
+    {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        try
+        {
+            return await UniTask.RunOnThreadPool(ShowWindowsOpenFileDialog);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[CytoidPlayer] OpenFileDialog failed: {e}");
+            return null;
+        }
+#else
+        await UniTask.CompletedTask;
+        return null;
+#endif
+    }
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+    [DllImport("comdlg32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool GetOpenFileName(ref OpenFileName ofn);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct OpenFileName
+    {
+        public int lStructSize;
+        public IntPtr hwndOwner;
+        public IntPtr hInstance;
+        public string lpstrFilter;
+        public string lpstrCustomFilter;
+        public int nMaxCustFilter;
+        public int nFilterIndex;
+        public string lpstrFile;
+        public int nMaxFile;
+        public string lpstrFileTitle;
+        public int nMaxFileTitle;
+        public string lpstrInitialDir;
+        public string lpstrTitle;
+        public int Flags;
+        public short nFileOffset;
+        public short nFileExtension;
+        public string lpstrDefExt;
+        public IntPtr lCustData;
+        public IntPtr lpfnHook;
+        public string lpTemplateName;
+        public IntPtr pvReserved;
+        public int dwReserved;
+        public int FlagsEx;
+    }
+
+    private static string ShowWindowsOpenFileDialog()
+    {
+        const int maxPath = 260;
+        var fileNameBuffer = new string('\0', maxPath);
+        var ofn = new OpenFileName
+        {
+            lStructSize = Marshal.SizeOf(typeof(OpenFileName)),
+            lpstrFilter = "Cytoid Level\0*.cytoidlevel\0All Files\0*.*\0\0",
+            lpstrFile = fileNameBuffer,
+            nMaxFile = maxPath,
+            lpstrTitle = "Select a Cytoid level",
+            Flags = 0x00000008 // OFN_HIDEREADONLY
+        };
+
+        if (GetOpenFileName(ref ofn))
+        {
+            return ofn.lpstrFile.TrimEnd('\0');
+        }
+
+        return null;
+    }
+#endif
+
+    private void ProcessCommandLineImport()
+    {
+        var args = Environment.GetCommandLineArgs();
+        foreach (var arg in args)
+        {
+            if (!arg.EndsWith(".cytoidlevel", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!File.Exists(arg)) continue;
+            InstallLevelPackage(arg).Forget();
+            break;
+        }
+    }
+}

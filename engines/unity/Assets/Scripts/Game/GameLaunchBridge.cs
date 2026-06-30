@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -28,9 +29,9 @@ public static class GameLaunchBridge
         }
     }
 
-    public static void StartDebugGame(Level level, Difficulty difficulty)
+    public static void StartDebugGame(Level level, Difficulty difficulty, IEnumerable<Mod> extraMods = null)
     {
-        LoadGameScene(new FileGameContentProvider(level, difficulty)).Forget();
+        LoadGameScene(new FileGameContentProvider(level, difficulty), extraMods: extraMods).Forget();
     }
 
     public static void StartDebugGameAsExternalPayload(Level level, Difficulty difficulty)
@@ -69,11 +70,11 @@ public static class GameLaunchBridge
         return ExternalGameContentProvider.FromJson(launchJson);
     }
 
-    internal static async UniTask LoadGameScene(IGameContentProvider provider, Action onLaunchFailed = null)
+    internal static async UniTask LoadGameScene(IGameContentProvider provider, Action onLaunchFailed = null, IEnumerable<Mod> extraMods = null)
     {
         try
         {
-            PrepareProviderContext(provider);
+            PrepareProviderContext(provider, extraMods);
             var sceneLoader = new SceneLoader("Game");
             await sceneLoader.Load();
             sceneLoader.Activate();
@@ -90,7 +91,7 @@ public static class GameLaunchBridge
         }
     }
 
-    private static void PrepareProviderContext(IGameContentProvider provider)
+    private static void PrepareProviderContext(IGameContentProvider provider, IEnumerable<Mod> extraMods = null)
     {
         Context.GameContentProvider?.Dispose();
         Context.GameContentProvider = provider;
@@ -98,6 +99,10 @@ public static class GameLaunchBridge
         Context.SelectedDifficulty = provider.Difficulty;
         Context.SelectedGameMode = GameMode.Standard;
         Context.SelectedMods.Clear();
+        if (extraMods != null)
+        {
+            Context.SelectedMods.UnionWith(extraMods);
+        }
         Context.PendingTierPlay = null;
         Context.ActiveTierPlaySession = null;
 

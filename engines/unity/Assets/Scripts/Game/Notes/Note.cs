@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -114,6 +114,7 @@ public abstract class Note : MonoBehaviour
 
     public virtual void PlayHitSound()
     {
+        if (Context.Player.Settings.HitSound == "none") return;
         if (Context.AudioManager.IsLoaded("HitSound"))
         {
             Context.AudioManager.Get("HitSound").Play();

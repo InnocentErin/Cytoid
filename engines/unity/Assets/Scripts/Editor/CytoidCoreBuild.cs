@@ -553,4 +553,117 @@ public static class CytoidCoreBuild
 
         return string.Join(";", symbols);
     }
+
+    #region Cytoid Player (Windows PC)
+
+    public const string CytoidPlayerOutputRelativePath = "Builds/CytoidPlayer";
+
+    public static readonly string[] PlayerBuildScenes =
+    {
+        "Assets/Scenes/Bootstrapper.unity",
+        "Assets/Scenes/Navigation.unity",
+        "Assets/Scenes/Game.unity"
+    };
+
+    private const int MenuPriorityBuildPlayer = 20;
+
+    [MenuItem("Cytoid/Build Cytoid Player (Windows x64)", false, MenuPriorityBuildPlayer)]
+    public static void BuildCytoidPlayerMenu()
+    {
+        BuildCytoidPlayerWindows64();
+    }
+
+    /// <summary>
+    /// Batchmode: Unity -batchmode -quit -projectPath ... -executeMethod CytoidCoreBuild.BuildCytoidPlayerWindows64
+    /// </summary>
+    public static void BuildCytoidPlayerWindows64()
+    {
+        var outputDirectory = ResolvePathUnderProjectRoot(CytoidPlayerOutputRelativePath);
+        BuildCytoidPlayerWindows64(outputDirectory);
+    }
+
+    public static void BuildCytoidPlayerWindows64(string outputDirectory)
+    {
+        SwitchToStandaloneWindows64();
+        Directory.CreateDirectory(outputDirectory);
+        var executablePath = Path.Combine(outputDirectory, "CytoidPlayer.exe");
+
+        RunAfterScriptCompilation(
+            () => RunStandaloneWindows64Build(PlayerBuildScenes, executablePath),
+            "Cytoid Player Windows x64 build");
+    }
+
+    private static void SwitchToStandaloneWindows64()
+    {
+        EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
+    }
+
+    private static void RunStandaloneWindows64Build(string[] scenes, string locationPathName)
+    {
+        var previousApplicationIdentifier = PlayerSettings.GetApplicationIdentifier(NamedBuildTarget.Standalone);
+        var previousProductName = PlayerSettings.productName;
+        var previousDefineSymbols = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.Standalone);
+
+        var previousDefaultScreenWidth = PlayerSettings.defaultScreenWidth;
+        var previousDefaultScreenHeight = PlayerSettings.defaultScreenHeight;
+        var previousFullscreenMode = PlayerSettings.fullScreenMode;
+        var previousAllowFullscreenSwitch = PlayerSettings.allowFullscreenSwitch;
+        var previousResizableWindow = PlayerSettings.resizableWindow;
+
+        try
+        {
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Standalone, "org.cytoid.player");
+            PlayerSettings.productName = "Cytoid Player";
+            PlayerSettings.defaultScreenWidth = 1280;
+            PlayerSettings.defaultScreenHeight = 720;
+            PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
+            PlayerSettings.allowFullscreenSwitch = true;
+            PlayerSettings.resizableWindow = true;
+            PlayerSettings.SetScriptingDefineSymbols(
+                NamedBuildTarget.Standalone,
+                MergeDefineSymbols(previousDefineSymbols, Array.Empty<string>()));
+
+            AssetDatabase.SaveAssets();
+
+            var builtScenes = scenes.Where(File.Exists).ToArray();
+            if (builtScenes.Length == 0)
+            {
+                throw new Exception("No build scenes found on disk.");
+            }
+
+            var options = new BuildPlayerOptions
+            {
+                scenes = builtScenes,
+                locationPathName = locationPathName,
+                target = BuildTarget.StandaloneWindows64,
+                targetGroup = BuildTargetGroup.Standalone,
+                options = BuildOptions.None
+            };
+
+            var report = BuildPipeline.BuildPlayer(options);
+            if (report.summary.result != BuildResult.Succeeded)
+            {
+                LogBuildReportErrors(report, "StandaloneWindows64");
+                throw new Exception(
+                    $"Cytoid Player Windows x64 build failed: {report.summary.result}. "
+                    + "See Console for build step errors.");
+            }
+
+            Debug.Log($"[CytoidCoreBuild] Cytoid Player built at {Path.GetFullPath(locationPathName)}");
+        }
+        finally
+        {
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Standalone, previousApplicationIdentifier);
+            PlayerSettings.productName = previousProductName;
+            PlayerSettings.defaultScreenWidth = previousDefaultScreenWidth;
+            PlayerSettings.defaultScreenHeight = previousDefaultScreenHeight;
+            PlayerSettings.fullScreenMode = previousFullscreenMode;
+            PlayerSettings.allowFullscreenSwitch = previousAllowFullscreenSwitch;
+            PlayerSettings.resizableWindow = previousResizableWindow;
+            PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.Standalone, previousDefineSymbols);
+            AssetDatabase.SaveAssets();
+        }
+    }
+
+    #endregion
 }

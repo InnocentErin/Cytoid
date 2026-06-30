@@ -158,10 +158,13 @@ public class LevelManager
             return new List<string>();
         }
 
-        return await InstallLevels(levelFiles, LevelType.User);
+        var installedJsonFiles = await InstallLevels(levelFiles, LevelType.User);
+        // Load (or reload) user levels so callers see them in LoadedLocalLevels.
+        await LoadLevelsOfType(LevelType.User);
+        return installedJsonFiles;
     }
 
-    public async UniTask<List<string>> InstallLevels(List<string> packagePaths, LevelType type)
+    public async UniTask<List<string>> InstallLevels(List<string> packagePaths, LevelType type, bool deleteSource = true)
     {
         var loadedLevelJsonFiles = new List<string>();
         var index = 1;
@@ -223,14 +226,17 @@ public class LevelManager
                 Debug.LogWarning($"Could not install {index}/{packagePaths.Count}: {levelFile}");
             }
 
-            try
+            if (deleteSource)
             {
-                File.Delete(levelFile);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError(e);
-                Debug.LogError($"Could not delete level file at {levelFile}");
+                try
+                {
+                    File.Delete(levelFile);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError(e);
+                    Debug.LogError($"Could not delete level file at {levelFile}");
+                }
             }
 
             index++;
@@ -249,8 +255,18 @@ public class LevelManager
 
         var level = LoadedLocalLevels[id];
 
-        Directory.Delete(Path.GetDirectoryName(level.Path) ?? throw new InvalidOperationException(), true);
-        LoadedLocalLevels.Remove(level.Id);
+        var directory = level.Path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.IsNullOrEmpty(directory))
+        {
+            throw new InvalidOperationException($"Invalid level path for {id}");
+        }
+
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, true);
+        }
+
+        LoadedLocalLevels.Remove(id);
         loadedPaths.Remove(level.Path);
     }
 

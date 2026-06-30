@@ -24,6 +24,14 @@ public class DebugNavigationController : MonoBehaviour
             return;
         }
 
+#if UNITY_STANDALONE_WIN
+        // The new Cytoid Player menu replaces the legacy debug navigation on Windows PC builds.
+        gameObject.SetActive(false);
+        var legacyCanvas = GameObject.Find("Debug Navigation Canvas");
+        if (legacyCanvas != null) legacyCanvas.SetActive(false);
+        return;
+#endif
+
         uiFont = Resources.Load<Font>("Fonts/Nunito-Regular");
         EnsureTextFonts();
     }

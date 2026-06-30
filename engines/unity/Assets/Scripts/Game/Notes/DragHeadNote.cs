@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 
 using Cysharp.Threading.Tasks;
@@ -244,6 +244,7 @@ public class DragHeadNote : Note
     
     public override void PlayHitSound()
     {
+        if (Context.Player.Settings.HitSound == "none") return;
         if (Context.AudioManager.IsLoaded("HitSound"))
         {
             Context.AudioManager.Get("HitSound").Play();

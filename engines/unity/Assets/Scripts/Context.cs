@@ -82,7 +82,9 @@ public class Context : SingletonMonoBehavior<Context>
     protected override void Awake()
     {
         base.Awake();
+#if UNITY_IOS || UNITY_ANDROID
         Vibration.Init();
+#endif
 
         if (GameObject.FindGameObjectsWithTag("Context").Length > 1)
         {
@@ -135,7 +137,7 @@ public class Context : SingletonMonoBehavior<Context>
         }
         print("User data path: " + UserDataPath);
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || UNITY_STANDALONE
         Application.runInBackground = true;
 #endif
 
@@ -259,6 +261,15 @@ public class Context : SingletonMonoBehavior<Context>
         SelectedMods.Clear();
         GameContentProvider?.Dispose();
         GameContentProvider = null;
+
+#if UNITY_STANDALONE_WIN
+        // Inject the Windows PC player menu if it isn't already present in the scene.
+        if (UnityEngine.Object.FindObjectOfType<CytoidPlayerMenuController>() == null)
+        {
+            var menuGo = new GameObject("CytoidPlayerMenuController");
+            menuGo.AddComponent<CytoidPlayerMenuController>();
+        }
+#endif
     }
 
     private static void InitializeFlutterHost()
@@ -357,6 +368,7 @@ public class Context : SingletonMonoBehavior<Context>
 
     static void HapticIOS(HapticTypes type)
     {
+#if UNITY_IOS
         switch (type)
         {
             case HapticTypes.Selection:
@@ -387,10 +399,12 @@ public class Context : SingletonMonoBehavior<Context>
                 Vibration.VibrateIOS(ImpactFeedbackStyle.Soft);
                 break;
         }
+#endif
     }
 
     static void HapticAndroid(HapticTypes type)
     {
+#if UNITY_ANDROID
         if (!Vibration.IsAvailable()) return;
 
         switch (type)
@@ -411,6 +425,7 @@ public class Context : SingletonMonoBehavior<Context>
                 Vibration.VibratePeek();
                 break;
         }
+#endif
     }
 
     public static void SetAutoRotation(bool autoRotation)
@@ -486,6 +501,47 @@ public class Context : SingletonMonoBehavior<Context>
     public static void UpdateGraphicsQuality()
     {
         var quality = Player.Settings.GraphicsQuality;
+#if UNITY_STANDALONE_WIN
+        // Cytoid Player on Windows PC runs in a resizable window.
+        // Quality only affects the default window size, not fullscreen.
+        int width, height;
+        switch (quality)
+        {
+            case GraphicsQuality.VeryLow:
+                width = 1024;
+                height = 576;
+                break;
+            case GraphicsQuality.Low:
+                width = 1280;
+                height = 720;
+                break;
+            case GraphicsQuality.Medium:
+                width = 1366;
+                height = 768;
+                break;
+            case GraphicsQuality.High:
+            case GraphicsQuality.Ultra:
+            default:
+                width = 1920;
+                height = 1080;
+                break;
+        }
+
+        // Clamp to the current monitor size so the window fits on screen.
+        var maxWidth = UnityEngine.Screen.currentResolution.width;
+        var maxHeight = UnityEngine.Screen.currentResolution.height;
+        if (width > maxWidth || height > maxHeight)
+        {
+            width = Mathf.Min(width, maxWidth);
+            height = Mathf.Min(height, maxHeight);
+            // Preserve aspect ratio.
+            var scale = Mathf.Min((float)width / 1920, (float)height / 1080);
+            width = Mathf.Max(1280, Mathf.RoundToInt(1920 * scale));
+            height = Mathf.Max(720, Mathf.RoundToInt(1080 * scale));
+        }
+
+        UnityEngine.Screen.SetResolution(width, height, FullScreenMode.Windowed);
+#else
         switch (quality)
         {
             case GraphicsQuality.Ultra:
@@ -505,7 +561,7 @@ public class Context : SingletonMonoBehavior<Context>
                     (int)(InitialHeight * 0.3f), FullScreenMode.ExclusiveFullScreen);
                 break;
         }
-
+#endif
     }
 
     public static void SetMajorCanvasBlockRaycasts(bool blocksRaycasts)
